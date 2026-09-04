@@ -1,0 +1,25 @@
+name: Verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/CvDatabase.Web/package-lock.json
+      - run: dotnet build CvDatabase.sln --configuration Release
+      - run: npm ci
+        working-directory: src/CvDatabase.Web
+      - run: npm run build
+        working-directory: src/CvDatabase.Web

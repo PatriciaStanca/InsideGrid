@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: insidegrid-postgres
+    environment:
+      POSTGRES_DB: cvdatabase
+      POSTGRES_USER: cvdatabase
+      POSTGRES_PASSWORD: cvdatabase_dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - insidegrid-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  insidegrid-postgres-data:
