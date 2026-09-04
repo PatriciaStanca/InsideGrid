@@ -92,6 +92,8 @@ app.UseExceptionHandler(exceptionApp =>
     });
 });
 app.UseSecurityHeaders();
+app.UseDefaultFiles();
+app.UseStaticFiles();
 if (app.Configuration.GetValue<bool>("Auth:UseDemoAuth"))
 {
     app.UseDemoAuthentication();
@@ -102,5 +104,6 @@ app.UseAuthorization();
 app.UseRateLimiter();
 
 app.MapControllers();
+app.MapFallbackToFile("index.html");
 
 app.Run();

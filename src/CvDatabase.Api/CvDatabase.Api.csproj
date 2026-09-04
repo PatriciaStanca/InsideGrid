@@ -13,4 +13,16 @@
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4" />
   </ItemGroup>
 
+  <Target Name="BuildFrontend" BeforeTargets="ComputeFilesToPublish">
+    <Exec WorkingDirectory="../CvDatabase.Web" Command="npm ci" />
+    <Exec WorkingDirectory="../CvDatabase.Web" Command="npm run build" />
+    <ItemGroup>
+      <FrontendFiles Include="../CvDatabase.Web/dist/**/*" />
+      <ResolvedFileToPublish Include="@(FrontendFiles->'%(FullPath)')" Exclude="@(ResolvedFileToPublish)">
+        <RelativePath>wwwroot/%(RecursiveDir)%(Filename)%(Extension)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
+
 </Project>
