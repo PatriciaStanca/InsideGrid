@@ -5,7 +5,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("shows a public job and accepts a demo application", async ({ page }) => {
-  await page.getByRole("button", { name: "Open roles" }).click();
+  await page.getByRole("button", { name: "Browse open roles" }).click();
   await expect(page.getByRole("heading", { name: "Data Engineer" })).toBeVisible();
   await page.getByLabel("First name *").fill("Jamie");
   await page.getByLabel("Last name *").fill("Rowan");
@@ -14,6 +14,19 @@ test("shows a public job and accepts a demo application", async ({ page }) => {
   await page.getByLabel(/I have read the privacy/).check();
   await page.getByRole("button", { name: /Submit application/ }).click();
   await expect(page.getByRole("heading", { name: "Thank you for applying." })).toBeVisible();
+});
+
+test("opens job and candidate records and exports a CV", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "Covered in the desktop product workflow.");
+  await page.getByRole("button", { name: "View product demo" }).click();
+  await page.getByRole("button", { name: "Jobs" }).click();
+  await page.getByText("Senior Product Designer", { exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Candidate matches" })).toBeVisible();
+  await page.getByRole("button", { name: /Maya Lindberg/ }).click();
+  await expect(page.getByRole("heading", { name: "Match by opportunity" })).toBeVisible();
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download CV as PDF" }).click();
+  expect((await download).suggestedFilename()).toContain("maya-lindberg-cv.pdf");
 });
 
 test("covers the required ATS demo flow", async ({ page }, testInfo) => {
@@ -29,7 +42,7 @@ test("covers the required ATS demo flow", async ({ page }, testInfo) => {
   if (testInfo.project.name === "desktop")
     await page.screenshot({ path: "/tmp/insidegrid-workspace-v3.png", fullPage: true });
 
-  await page.getByRole("button", { name: /Pipeline/ }).click();
+  await page.getByRole("button", { name: /^Candidate pipeline/ }).click();
   await expect(
     page.getByRole("heading", {
       name: "Move every candidate forward with context.",

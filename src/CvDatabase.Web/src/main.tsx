@@ -118,6 +118,30 @@ const daysInStage = (value: string) =>
     Math.floor((Date.now() - new Date(value).getTime()) / 86_400_000),
   );
 
+function candidateMatch(candidate: Candidate, job: Job) {
+  const target = `${job.title} ${job.department} ${job.description}`.toLowerCase();
+  const matched = candidate.skills.filter((skill) => target.includes(skill.toLowerCase()));
+  const relevantTitle = target.split(/\W+/).some((word) => word.length > 3 && candidate.professional_title.toLowerCase().includes(word));
+  const score = Math.min(96, Math.round(38 + (matched.length / Math.max(candidate.skills.length, 1)) * 48 + (relevantTitle ? 10 : 0)));
+  return { score, matched, gaps: candidate.skills.filter((skill) => !matched.includes(skill)).slice(0, 2) };
+}
+
+async function downloadCandidateCv(candidate: Candidate) {
+  const { jsPDF } = await import("jspdf");
+  const pdf = new jsPDF();
+  pdf.setFont("helvetica", "bold"); pdf.setFontSize(22); pdf.text(candidate.full_name, 20, 25);
+  pdf.setFontSize(12); pdf.setTextColor(45, 65, 58); pdf.text(candidate.professional_title || "Candidate profile", 20, 34);
+  pdf.setDrawColor(215, 220, 217); pdf.line(20, 42, 190, 42);
+  pdf.setFont("helvetica", "normal"); pdf.setTextColor(70, 76, 73); pdf.setFontSize(10);
+  pdf.text([candidate.location, candidate.email, candidate.phone].filter(Boolean).join("  |  "), 20, 51);
+  pdf.setFont("helvetica", "bold"); pdf.setTextColor(20, 25, 23); pdf.setFontSize(12); pdf.text("Profile", 20, 67);
+  pdf.setFont("helvetica", "normal"); pdf.setFontSize(10); pdf.setTextColor(60, 66, 63); pdf.text(pdf.splitTextToSize(candidate.summary || "No profile summary provided.", 170), 20, 75);
+  pdf.setFont("helvetica", "bold"); pdf.setTextColor(20, 25, 23); pdf.setFontSize(12); pdf.text("Skills", 20, 105);
+  pdf.setFont("helvetica", "normal"); pdf.setFontSize(10); pdf.text(candidate.skills.join("  ·  ") || "No skills provided", 20, 114);
+  if (candidate.linkedin_url) { pdf.setTextColor(23, 107, 85); pdf.textWithLink("LinkedIn profile", 20, 132, { url: candidate.linkedin_url }); }
+  pdf.save(`${candidate.full_name.replace(/\s+/g, "-").toLowerCase()}-cv.pdf`);
+}
+
 type PublicPage = "home" | "pricing" | "jobs" | "login";
 
 function PublicSite({
@@ -170,6 +194,7 @@ function PublicSite({
               <p className="hero-lead">Track applications, run recruitment and match consultants to assignments—with every profile and next step in view.</p>
               <div className="hero-cta">
                 <button className="primary-button large-button" onClick={() => onNavigate("login")}>Choose your workspace <ArrowRight size={17} /></button>
+                <button className="quiet-button" onClick={() => onNavigate("jobs")}><BriefcaseBusiness size={15} /> Browse open roles</button>
                 <button className="quiet-button" onClick={onDemo}><Play size={15} fill="currentColor" /> View product demo</button>
               </div>
               <p className="trust-line"><Check size={15} /> Start free &nbsp; <Check size={15} /> No credit card &nbsp; <Check size={15} /> Built for GDPR-aware teams</p>
@@ -445,10 +470,13 @@ function App() {
   const [selectedApplicationId, setSelectedApplicationId] = useState<
     string | null
   >(null);
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
   const [jobFilter, setJobFilter] = useState("all");
   const [candidateSearch, setCandidateSearch] = useState("");
   const [loading, setLoading] = useState(hasSupabaseConfig);
   const [demoMode, setDemoMode] = useState(false);
+  const demoModeRef = useRef(false);
   const [mobileNav, setMobileNav] = useState(false);
   const [toast, setToast] = useState("");
   useEffect(() => {
@@ -461,7 +489,7 @@ function App() {
       .catch(() => undefined)
       .finally(() => alive && setLoading(false));
     const subscription = onAuthChange((session) => {
-      if (!session) setWorkspace(null);
+      if (!session && !demoModeRef.current) setWorkspace(null);
     });
     return () => {
       alive = false;
@@ -480,6 +508,7 @@ function App() {
       setWorkspace(next);
       setSelectedOrganizationId(next.organizations[0]?.id ?? "");
       setDemoMode(false);
+      demoModeRef.current = false;
     } finally {
       setLoading(false);
     }
@@ -489,11 +518,13 @@ function App() {
     setWorkspace(clone);
     setSelectedOrganizationId(clone.organizations[0].id);
     setDemoMode(true);
+    demoModeRef.current = true;
   }
   async function exit() {
     if (!demoMode && hasSupabaseConfig) await signOut();
     setWorkspace(null);
     setDemoMode(false);
+    demoModeRef.current = false;
   }
   if (loading)
     return (
@@ -760,6 +791,7 @@ function App() {
                 setJobFilter(id);
                 setView("pipeline");
               }}
+              onOpenJob={setSelectedJobId}
             />
           )}
           {view === "candidates" && (
@@ -768,6 +800,7 @@ function App() {
               applications={applications}
               jobs={jobs}
               onAdd={() => setModal("candidate")}
+              onSelect={setSelectedCandidateId}
             />
           )}
           {view === "team" && isAdmin && (
@@ -833,6 +866,12 @@ function App() {
           onMove={moveApplication}
           onEvaluate={runEvaluation}
         />
+      )}
+      {selectedJobId && workspace.jobs.find((item) => item.id === selectedJobId) && (
+        <JobDrawer job={workspace.jobs.find((item) => item.id === selectedJobId)!} candidates={workspace.candidates} applications={workspace.applications} onClose={() => setSelectedJobId(null)} onOpenCandidate={(id) => { setSelectedJobId(null); setSelectedCandidateId(id); }} />
+      )}
+      {selectedCandidateId && workspace.candidates.find((item) => item.id === selectedCandidateId) && (
+        <CandidateProfileDrawer candidate={workspace.candidates.find((item) => item.id === selectedCandidateId)!} jobs={workspace.jobs} applications={workspace.applications} onClose={() => setSelectedCandidateId(null)} />
       )}
       {toast && (
         <div className="toast">
@@ -1186,6 +1225,7 @@ function Pipeline({
                           <strong>{candidate.full_name}</strong>
                           <small>{candidate.professional_title}</small>
                         </div>
+                        <span className="match-chip">{candidateMatch(candidate, job).score}% match</span>
                       </div>
                       <p className="job-context">
                         <BriefcaseBusiness size={14} /> {job.title}
@@ -1242,12 +1282,14 @@ function Jobs({
   organization,
   onAdd,
   onOpenPipeline,
+  onOpenJob,
 }: {
   jobs: Job[];
   applications: Application[];
   organization: Organization;
   onAdd: () => void;
   onOpenPipeline: (id: string) => void;
+  onOpenJob: (id: string) => void;
 }) {
   return (
     <>
@@ -1271,7 +1313,7 @@ function Jobs({
       </section>
       <section className="job-grid">
         {jobs.map((job) => (
-          <article className="job-card" key={job.id}>
+          <article className="job-card" key={job.id} onClick={() => onOpenJob(job.id)}>
             <header>
               <span className="job-icon">
                 <BriefcaseBusiness />
@@ -1304,7 +1346,7 @@ function Jobs({
             </div>
             <button
               className="secondary-button wide"
-              onClick={() => onOpenPipeline(job.id)}
+              onClick={(event) => { event.stopPropagation(); onOpenPipeline(job.id); }}
             >
               Open pipeline <ArrowRight size={16} />
             </button>
@@ -1330,11 +1372,13 @@ function Candidates({
   applications,
   jobs,
   onAdd,
+  onSelect,
 }: {
   candidates: Candidate[];
   applications: Application[];
   jobs: Job[];
   onAdd: () => void;
+  onSelect: (id: string) => void;
 }) {
   const [search, setSearch] = useState("");
   const filtered = useMemo(
@@ -1385,7 +1429,7 @@ function Candidates({
               !["rejected", "hired"].includes(item.stage),
           );
           return (
-            <div className="talent-row" key={candidate.id}>
+            <button className="talent-row talent-row-button" key={candidate.id} onClick={() => onSelect(candidate.id)}>
               <span className="person-cell">
                 <span className="avatar soft">
                   {initials(candidate.full_name)}
@@ -1425,7 +1469,7 @@ function Candidates({
                   </a>
                 )}
               </span>
-            </div>
+            </button>
           );
         })}
         {!filtered.length && (
@@ -2157,6 +2201,16 @@ function FormActions({
       </button>
     </div>
   );
+}
+
+function JobDrawer({ job, candidates, applications, onClose, onOpenCandidate }: { job: Job; candidates: Candidate[]; applications: Application[]; onClose: () => void; onOpenCandidate: (id: string) => void }) {
+  const jobApplications = applications.filter((item) => item.job_id === job.id);
+  return <div className="drawer-backdrop" onMouseDown={onClose}><aside className="drawer record-drawer" onMouseDown={(event)=>event.stopPropagation()}><header><div><span className="eyebrow dark">{job.status.toUpperCase()} ROLE</span><h2>{job.title}</h2><p>{job.department} · {job.location} · {job.employment_type}</p></div><button className="icon-button" onClick={onClose}><X/></button></header><section className="job-drawer-summary"><div><strong>{jobApplications.length}</strong><small>Candidates</small></div><div><strong>{jobApplications.filter(item=>item.stage==="interview").length}</strong><small>Interviews</small></div><div><strong>{jobApplications.filter(item=>item.stage==="offer").length}</strong><small>Offers</small></div></section><section><h3>About the opportunity</h3><p className="preserve-lines">{job.description || "No job description has been added."}</p></section><section><div className="drawer-section-heading"><h3>Candidate matches</h3><small>Based on stated profile evidence</small></div><div className="ranked-list">{jobApplications.map(application=>{const candidate=candidates.find(item=>item.id===application.candidate_id);if(!candidate)return null;const match=candidateMatch(candidate,job);return <button key={application.id} onClick={()=>onOpenCandidate(candidate.id)}><span className="avatar soft">{initials(candidate.full_name)}</span><span><strong>{candidate.full_name}</strong><small>{match.matched.length ? `Evidence: ${match.matched.join(", ")}` : "Review profile evidence"}</small></span><b>{match.score}%</b><ArrowRight size={15}/></button>})}{!jobApplications.length&&<p className="muted-copy">No candidates have been added to this role yet.</p>}</div></section></aside></div>;
+}
+
+function CandidateProfileDrawer({ candidate, jobs, applications, onClose }: { candidate: Candidate; jobs: Job[]; applications: Application[]; onClose: () => void }) {
+  const candidateApplications = applications.filter(item=>item.candidate_id===candidate.id);
+  return <div className="drawer-backdrop" onMouseDown={onClose}><aside className="drawer record-drawer" onMouseDown={(event)=>event.stopPropagation()}><header><div className="candidate-card-head"><span className="avatar large">{initials(candidate.full_name)}</span><div><h2>{candidate.full_name}</h2><p>{candidate.professional_title} · {candidate.location}</p></div></div><button className="icon-button" onClick={onClose}><X/></button></header><section className="profile-actions"><button className="primary-button" onClick={()=>downloadCandidateCv(candidate)}>Download CV as PDF</button>{candidate.linkedin_url&&<a className="secondary-button" href={candidate.linkedin_url} target="_blank" rel="noreferrer">LinkedIn <ExternalLink size={14}/></a>}</section><section><h3>Professional profile</h3><p>{candidate.summary || "No profile summary has been added."}</p><div className="skill-row roomy">{candidate.skills.map(skill=><span key={skill}>{skill}</span>)}</div></section><section><div className="drawer-section-heading"><h3>Match by opportunity</h3><small>Evidence, not an automated decision</small></div><div className="match-list">{candidateApplications.map(application=>{const job=jobs.find(item=>item.id===application.job_id);if(!job)return null;const match=candidateMatch(candidate,job);return <article key={application.id}><div><strong>{job.title}</strong><span className={`stage-badge ${application.stage}`}>{application.stage}</span></div><div className="match-meter"><i style={{width:`${match.score}%`}}></i></div><b>{match.score}% profile match</b><p>{match.matched.length ? `Supported by: ${match.matched.join(", ")}.` : "No direct skill keywords found; review manually."}</p>{match.gaps.length>0&&<small>Additional experience to explore: {match.gaps.join(", ")}.</small>}</article>})}{!candidateApplications.length&&<p className="muted-copy">This person is currently in the talent pool and has not been connected to an opportunity.</p>}</div></section><section className="contact-summary"><span><small>Email</small><a href={`mailto:${candidate.email}`}>{candidate.email}</a></span><span><small>Phone</small>{candidate.phone||"Not provided"}</span><span><small>Available from</small>{candidate.available_from||"Not specified"}</span></section></aside></div>;
 }
 
 function CandidateDrawer({
