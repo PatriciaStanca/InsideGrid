@@ -672,7 +672,7 @@ function App() {
               <Menu />
             </button>
             <div>
-              <span>Workspace</span>
+              <span>{organization.name}</span>
               <h1>{titleByView[view]}</h1>
             </div>
           </div>
@@ -897,7 +897,7 @@ function Dashboard({
               ? "Consulting workspace"
               : "Recruitment workspace"}
           </span>
-          <h2>Good morning. Here’s where things stand.</h2>
+          <h2>Recruitment overview</h2>
           <p>
             {organization.name} has {active.length} active candidate processes
             across {jobs.filter((item) => item.status === "open").length} open{" "}
@@ -1004,31 +1004,18 @@ function Dashboard({
           </div>
         </article>
         <article className="panel focus-panel">
-          <span className="spark-icon">
-            <Sparkles />
-          </span>
-          <span className="eyebrow dark">HUMAN-CENTERED AI</span>
-          <h3>Evidence before intuition</h3>
-          <p>
-            InsideGrid compares verified candidate information with job
-            requirements and turns gaps into useful interview questions.
-          </p>
-          <ul>
-            <li>
-              <Check size={15} /> Evidence-backed strengths
-            </li>
-            <li>
-              <Check size={15} /> Clear unknowns and gaps
-            </li>
-            <li>
-              <Check size={15} /> No automated hiring decisions
-            </li>
-          </ul>
+          <span className="eyebrow dark">NEXT ACTIONS</span>
+          <h3>Keep the process moving</h3>
+          <div className="action-list">
+            <button onClick={() => onNavigate("pipeline")}><span><b>{active.filter((item) => daysInStage(item.stage_changed_at) >= 3).length}</b><small>Candidates waiting 3+ days</small></span><ArrowRight size={15}/></button>
+            <button onClick={() => onNavigate("pipeline")}><span><b>{active.filter((item) => item.stage === "interview").length}</b><small>Interview-stage candidates</small></span><ArrowRight size={15}/></button>
+            <button onClick={() => onNavigate("jobs")}><span><b>{jobs.filter((item) => item.status === "open").length}</b><small>Open roles accepting candidates</small></span><ArrowRight size={15}/></button>
+          </div>
           <button
             className="secondary-button"
             onClick={() => onNavigate("pipeline")}
           >
-            Review candidates
+            Open candidate pipeline
           </button>
         </article>
       </section>

@@ -12,7 +12,7 @@ test("covers the required ATS demo flow", async ({ page }, testInfo) => {
   await expect(page.getByRole("heading", { name: /One workspace/ })).toBeVisible();
   await page.getByRole("button", { name: "View product demo" }).click();
   await expect(
-    page.getByRole("heading", { name: /Good morning/ }),
+    page.getByRole("heading", { name: "Recruitment overview" }),
   ).toBeVisible();
 
   await page.getByRole("button", { name: /Pipeline/ }).click();
@@ -92,5 +92,5 @@ test("does not overflow the mobile viewport", async ({ page }, testInfo) => {
   );
   expect(overflow).toBe(false);
   await page.getByRole("button", { name: "View product demo" }).click();
-  await expect(page.getByRole("heading", { name: /Good morning/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Recruitment overview" })).toBeVisible();
 });
