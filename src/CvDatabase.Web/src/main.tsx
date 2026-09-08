@@ -175,7 +175,7 @@ function PublicSite({
                 <source src="/pexels-team-work.mp4" type="video/mp4" />
               </video>
               <div className="media-status"><span className="live-dot"></span><strong>4 candidates moving</strong><small>across 2 active pipelines</small></div>
-              <div className="media-caption"><span>One shared view</span><strong>People and opportunities, clearly connected.</strong><a href="https://www.pexels.com/video/people-working-in-the-office-5020277/" target="_blank" rel="noreferrer">Video: Antoni Shkraba / Pexels</a></div>
+              <div className="media-caption"><span>One shared view</span><strong>People and opportunities, clearly connected.</strong><a href="https://www.pexels.com/video/overhead-shot-of-a-person-using-a-laptop-6897959/" target="_blank" rel="noreferrer">Video: Mikhail Nilov / Pexels</a></div>
             </div>
           </section>
 
