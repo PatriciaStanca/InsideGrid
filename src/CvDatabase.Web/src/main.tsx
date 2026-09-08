@@ -162,8 +162,8 @@ function PublicSite({
           <section className="marketing-hero">
             <div className="hero-copy">
               <p className="marketing-kicker">One place for working life</p>
-              <h1>Find the right work.<br />Find the right people.</h1>
-              <p className="hero-lead">InsideGrid brings candidates, hiring teams and consulting companies into one calm, practical workspace.</p>
+              <h1>One workspace.<br />Better matches.</h1>
+              <p className="hero-lead">Track applications, run recruitment and match consultants to assignments—with every profile and next step in view.</p>
               <div className="hero-cta">
                 <button className="primary-button large-button" onClick={() => onNavigate("login")}>Choose your workspace <ArrowRight size={17} /></button>
                 <button className="quiet-button" onClick={onDemo}><Play size={15} fill="currentColor" /> View product demo</button>
@@ -172,10 +172,18 @@ function PublicSite({
             </div>
             <div className="hero-media">
               <video autoPlay muted loop playsInline poster="/login.avif">
-                <source src="/login-video.mp4" type="video/mp4" />
+                <source src="/pexels-team-work.mp4" type="video/mp4" />
               </video>
-              <div className="media-caption"><span>InsideGrid in practice</span><strong>People and opportunities, clearly connected.</strong></div>
+              <div className="media-status"><span className="live-dot"></span><strong>4 candidates moving</strong><small>across 2 active pipelines</small></div>
+              <div className="media-caption"><span>One shared view</span><strong>People and opportunities, clearly connected.</strong><a href="https://www.pexels.com/video/people-working-in-the-office-5020277/" target="_blank" rel="noreferrer">Video: Antoni Shkraba / Pexels</a></div>
             </div>
+          </section>
+
+          <section className="capability-strip" aria-label="InsideGrid capabilities">
+            <div><strong>01</strong><span>Build a reusable<br/>talent profile</span></div>
+            <div><strong>02</strong><span>Create jobs with<br/>an editable AI draft</span></div>
+            <div><strong>03</strong><span>Move people through<br/>a clear pipeline</span></div>
+            <div><strong>04</strong><span>Match consultants<br/>to client work</span></div>
           </section>
 
           <section className="audience-section" id="how-it-works">

@@ -9,7 +9,7 @@ test("covers the required ATS demo flow", async ({ page }, testInfo) => {
     testInfo.project.name === "mobile",
     "The full workflow is covered on desktop; mobile has a focused layout test.",
   );
-  await expect(page.getByRole("heading", { name: /Find the right work/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /One workspace/ })).toBeVisible();
   await page.getByRole("button", { name: "View product demo" }).click();
   await expect(
     page.getByRole("heading", { name: /Good morning/ }),
