@@ -4,6 +4,18 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/");
 });
 
+test("shows a public job and accepts a demo application", async ({ page }) => {
+  await page.getByRole("button", { name: "Open roles" }).click();
+  await expect(page.getByRole("heading", { name: "Data Engineer" })).toBeVisible();
+  await page.getByLabel("First name *").fill("Jamie");
+  await page.getByLabel("Last name *").fill("Rowan");
+  await page.getByLabel("Email address *").fill("jamie@example.com");
+  await page.getByLabel(/Resume or CV/).setInputFiles({ name: "resume.txt", mimeType: "text/plain", buffer: Buffer.from("Demo resume") });
+  await page.getByLabel(/I have read the privacy/).check();
+  await page.getByRole("button", { name: /Submit application/ }).click();
+  await expect(page.getByRole("heading", { name: "Thank you for applying." })).toBeVisible();
+});
+
 test("covers the required ATS demo flow", async ({ page }, testInfo) => {
   test.skip(
     testInfo.project.name === "mobile",

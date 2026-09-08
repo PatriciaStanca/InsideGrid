@@ -47,6 +47,7 @@ import {
 import { hasSupabaseConfig } from "./lib/supabase";
 import type {
   AiEvaluation,
+  AccountPermission,
   Application,
   ApplicationStage,
   Candidate,
@@ -117,7 +118,7 @@ const daysInStage = (value: string) =>
     Math.floor((Date.now() - new Date(value).getTime()) / 86_400_000),
   );
 
-type PublicPage = "home" | "pricing" | "login";
+type PublicPage = "home" | "pricing" | "jobs" | "login";
 
 function PublicSite({
   page,
@@ -146,6 +147,7 @@ function PublicSite({
         </button>
         <nav aria-label="Main navigation">
           <button onClick={() => onNavigate("home")}>Product</button>
+          <button onClick={() => onNavigate("jobs")}>Open roles</button>
           <button onClick={() => onNavigate("pricing")}>Pricing</button>
           <button onClick={() => document.getElementById("how-it-works")?.scrollIntoView({ behavior: "smooth" })}>How it works</button>
         </nav>
@@ -157,6 +159,8 @@ function PublicSite({
 
       {page === "pricing" ? (
         <PricingPage onStart={() => onNavigate("login")} />
+      ) : page === "jobs" ? (
+        <PublicJobPage />
       ) : (
         <>
           <section className="marketing-hero">
@@ -224,6 +228,39 @@ function PricingPage({ onStart }: { onStart: () => void }) {
     { audience:"For consulting firms", name:"Consulting", price:"Free", note:"for up to 2 consultants", description:"For small consulting teams building their shared competence base.", items:["2 consultant profiles", "CV and competence database", "Assignment pipeline", "Availability overview"], action:"Add your consultants" },
   ];
   return <section className="pricing-page"><div className="pricing-heading"><p className="marketing-kicker">Plans that grow with the work</p><h1>Start free. Upgrade when InsideGrid earns its place.</h1><p>No complicated packages at the beginning. Choose the workspace that fits you today.</p></div><div className="pricing-grid">{plans.map(plan=><article className={`price-card ${plan.featured ? "featured" : ""}`} key={plan.name}>{plan.featured && <span className="popular-label">Best place to start</span>}<small>{plan.audience}</small><h2>{plan.name}</h2><div className="price"><strong>{plan.price}</strong><span>{plan.note}</span></div><p>{plan.description}</p><ul>{plan.items.map(item=><li key={item}><Check size={16}/>{item}</li>)}</ul><button className={plan.featured ? "primary-button" : "secondary-button"} onClick={onStart}>{plan.action}<ArrowRight size={16}/></button></article>)}</div><div className="paid-note"><Clock3/><div><strong>What happens after the free level?</strong><p>Paid plans for additional recruitments, applications or consultant profiles will be introduced after the pilot. Early users will see the price before choosing to upgrade—nothing changes automatically.</p></div></div></section>;
+}
+
+function PublicJobPage() {
+  const [submitted, setSubmitted] = useState(false);
+  if (submitted) return <section className="application-success"><span><Check size={24}/></span><p className="marketing-kicker">Application received</p><h1>Thank you for applying.</h1><p>This demo application has not stored any personal data. In a connected customer workspace, the candidate would now appear in the New column.</p><button className="secondary-button" onClick={() => setSubmitted(false)}>Back to role</button></section>;
+  return <div className="public-job-page">
+    <section className="job-intro">
+      <a href="#apply" className="primary-button">Apply for this role <ArrowRight size={16}/></a>
+      <p className="marketing-kicker">Northstar Talent · Data & AI</p>
+      <h1>Data Engineer</h1>
+      <div className="job-meta"><span>Remote · Sweden</span><span>Full-time</span><span>Applications reviewed weekly</span></div>
+    </section>
+    <div className="job-layout">
+      <article className="job-description">
+        <h2>About the role</h2><p>Join a small data team building reliable products that help colleagues make better decisions. You will work across ingestion, modelling and delivery, with room to improve both the platform and the way the team works.</p>
+        <h2>What you will do</h2><ul><li>Build and maintain dependable data pipelines.</li><li>Model trusted datasets for analytics and reporting.</li><li>Work with product and business teams to turn questions into useful data products.</li><li>Improve testing, documentation and observability.</li></ul>
+        <h2>What we are looking for</h2><ul><li>Practical experience with SQL and Python.</li><li>Experience with cloud data platforms and ETL or ELT workflows.</li><li>A collaborative approach and clear communication.</li><li>Care for quality, maintainability and responsible data use.</li></ul>
+        <h2>Our process</h2><ol><li>Introductory conversation</li><li>Practical, role-relevant discussion</li><li>Meet the team</li><li>Decision and feedback</li></ol>
+        <aside><ShieldCheck size={18}/><p>Every application is reviewed by a person. AI may help structure information, but it does not make hiring decisions.</p></aside>
+      </article>
+      <form id="apply" className="application-form" onSubmit={(event)=>{event.preventDefault();setSubmitted(true);window.scrollTo({top:0,behavior:"smooth"});}}>
+        <p className="marketing-kicker">Apply for this job</p><h2>Tell us about yourself</h2><p>Fields marked with * are required.</p>
+        <div className="form-grid"><label>First name *<input required /></label><label>Last name *<input required /></label></div>
+        <label>Email address *<input type="email" required /></label><label>Phone<input type="tel" /></label>
+        <label>Resume or CV *<input className="file-input" type="file" accept=".pdf,.doc,.docx,.txt" required /><small>PDF, DOC, DOCX or TXT · maximum 10 MB</small></label>
+        <label>LinkedIn profile<input type="url" placeholder="https://linkedin.com/in/..." /></label>
+        <label>Portfolio or website<input type="url" placeholder="https://" /></label>
+        <label>Why does this role interest you?<textarea rows={5}></textarea></label>
+        <label className="consent-field"><input type="checkbox" required/><span>I have read the privacy information and consent to my application being processed for this recruitment. *</span></label>
+        <button className="primary-button wide" type="submit">Submit application <ArrowRight size={16}/></button>
+      </form>
+    </div>
+  </div>;
 }
 
 function Login({
@@ -486,6 +523,12 @@ function App() {
     return (
       <EmptyWorkspace profileName={workspace.profile.full_name} onExit={exit} />
     );
+  const memberPermissions = currentWorkspace.memberships.find(
+    (item) => item.organization_id === organization.id && item.user_id === currentWorkspace.profile.id,
+  )?.permissions ?? [];
+  const can = (permission: AccountPermission) => isAdmin || memberPermissions.includes(permission);
+  const showRecruitment = organization.workspace_mode !== "consulting";
+  const showConsulting = organization.workspace_mode !== "recruitment";
   const jobs = workspace.jobs.filter(
     (item) => item.organization_id === organization.id,
   );
@@ -612,36 +655,13 @@ function App() {
             active={view === "dashboard"}
             onClick={() => setView("dashboard")}
           />
-          <NavItem
-            icon={<Grid2X2 />}
-            label="Pipeline"
-            active={view === "pipeline"}
-            onClick={() => setView("pipeline")}
-            badge={
-              applications.filter(
-                (item) => !["rejected", "hired"].includes(item.stage),
-              ).length
-            }
-          />
-          <NavItem
-            icon={<BriefcaseBusiness />}
-            label={
-              organization.workspace_mode === "consulting"
-                ? "Assignments"
-                : "Jobs"
-            }
-            active={view === "jobs"}
-            onClick={() => setView("jobs")}
-          />
-          <NavItem
-            icon={<Users />}
-            label="Talent"
-            active={view === "candidates"}
-            onClick={() => setView("candidates")}
-          />
+          {(can("manage_jobs") || can("manage_candidates")) && <NavItem icon={<Grid2X2 />} label={showConsulting && !showRecruitment ? "Assignment pipeline" : "Candidate pipeline"} active={view === "pipeline"} onClick={() => setView("pipeline")} badge={applications.filter((item) => !["rejected", "hired"].includes(item.stage)).length} />}
+          {can("manage_jobs") && <NavItem icon={<BriefcaseBusiness />} label={showConsulting && !showRecruitment ? "Assignments" : "Jobs"} active={view === "jobs"} onClick={() => setView("jobs")} />}
+          {can("manage_candidates") && showRecruitment && <NavItem icon={<Users />} label="Candidates" active={view === "candidates"} onClick={() => setView("candidates")} />}
+          {can("manage_consultants") && showConsulting && <NavItem icon={<Users />} label="Consultants" active={view === "candidates"} onClick={() => setView("candidates")} />}
           {isAdmin && (
             <>
-              <span className="nav-section">ADMINISTRATION</span>
+              <span className="nav-section">ADMIN</span>
               <NavItem
                 icon={<ShieldCheck />}
                 label="Access & accounts"
@@ -696,12 +716,12 @@ function App() {
                 <ChevronDown size={15} />
               </label>
             )}
-            <button
+            {(can("manage_candidates") || can("manage_consultants")) && <button
               className="primary-button"
               onClick={() => setModal("candidate")}
             >
-              <Plus size={17} /> Add candidate
-            </button>
+              <Plus size={17} /> Add {showConsulting && !showRecruitment ? "consultant" : "candidate"}
+            </button>}
           </div>
         </header>
         <div className="content">
@@ -711,6 +731,7 @@ function App() {
               jobs={jobs}
               candidates={candidates}
               applications={applications}
+              canCreateJob={can("manage_jobs")}
               onNavigate={setView}
               onAddJob={() => setModal("job")}
             />
@@ -872,6 +893,7 @@ function Dashboard({
   jobs,
   candidates,
   applications,
+  canCreateJob,
   onNavigate,
   onAddJob,
 }: {
@@ -879,6 +901,7 @@ function Dashboard({
   jobs: Job[];
   candidates: Candidate[];
   applications: Application[];
+  canCreateJob: boolean;
   onNavigate: (view: View) => void;
   onAddJob: () => void;
 }) {
@@ -914,12 +937,12 @@ function Dashboard({
           >
             Open pipeline <ArrowRight size={17} />
           </button>
-          <button className="secondary-button" onClick={onAddJob}>
+          {canCreateJob && <button className="secondary-button" onClick={onAddJob}>
             <Plus size={17} /> Create{" "}
             {organization.workspace_mode === "consulting"
               ? "assignment"
               : "job"}
-          </button>
+          </button>}
         </div>
       </section>
       <section className="metric-grid">
@@ -2019,6 +2042,7 @@ function UserModal({
             ? String(form.get("organizationName"))
             : undefined,
         workspaceMode: String(form.get("workspaceMode")) as WorkspaceMode,
+        permissions: form.getAll("permissions").map(String),
       });
       onCreated(result.organization);
     } finally {
@@ -2090,6 +2114,14 @@ function UserModal({
                 </label>
               </div>
             )}
+            <fieldset className="permission-fieldset">
+              <legend>Account permissions</legend>
+              <p>Choose only what this person needs. Workspace type and permissions are managed separately.</p>
+              <label><input type="checkbox" name="permissions" value="manage_jobs" defaultChecked /> <span><strong>Jobs and assignments</strong><small>Create and manage opportunities and pipelines.</small></span></label>
+              <label><input type="checkbox" name="permissions" value="manage_candidates" defaultChecked /> <span><strong>Candidates</strong><small>View and manage external candidate profiles.</small></span></label>
+              <label><input type="checkbox" name="permissions" value="manage_consultants" /> <span><strong>Consultants</strong><small>View employee CVs, availability and assignment matching.</small></span></label>
+              <label><input type="checkbox" name="permissions" value="manage_accounts" /> <span><strong>Account administration</strong><small>Manage members inside this customer workspace.</small></span></label>
+            </fieldset>
           </>
         )}
         <FormActions

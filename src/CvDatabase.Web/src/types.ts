@@ -2,6 +2,7 @@ export type PlatformRole = "platform_admin" | "customer";
 export type WorkspaceMode = "recruitment" | "consulting" | "hybrid";
 export type JobType = "internal_role" | "client_assignment";
 export type ApplicationStage = "new" | "review" | "interview" | "offer" | "hired" | "rejected";
+export type AccountPermission = "manage_jobs" | "manage_candidates" | "manage_consultants" | "manage_accounts";
 
 export interface Profile {
   id: string;
@@ -14,6 +15,13 @@ export interface Organization {
   id: string;
   name: string;
   workspace_mode: WorkspaceMode;
+}
+
+export interface OrganizationMembership {
+  organization_id: string;
+  user_id: string;
+  role: "owner" | "recruiter" | "viewer";
+  permissions: AccountPermission[];
 }
 
 export interface Job {
@@ -69,6 +77,7 @@ export interface AiEvaluation {
 export interface WorkspaceData {
   profile: Profile;
   organizations: Organization[];
+  memberships: OrganizationMembership[];
   jobs: Job[];
   candidates: Candidate[];
   applications: Application[];

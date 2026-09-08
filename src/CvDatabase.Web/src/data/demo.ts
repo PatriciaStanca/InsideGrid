@@ -14,6 +14,7 @@ export const demoWorkspace: WorkspaceData = {
     { id: "northstar", name: "Northstar Talent", workspace_mode: "recruitment" },
     { id: "signal", name: "Signal Consulting", workspace_mode: "consulting" },
   ],
+  memberships: [],
   jobs: [
     {
       id: "job-product",

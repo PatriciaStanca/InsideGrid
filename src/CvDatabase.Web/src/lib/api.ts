@@ -7,6 +7,7 @@ import type {
   Candidate,
   Job,
   Organization,
+  OrganizationMembership,
   Profile,
   WorkspaceData,
   WorkspaceMode,
@@ -76,12 +77,14 @@ export async function loadWorkspace(userId: string): Promise<WorkspaceData> {
 
   const [
     organizationResult,
+    membershipResult,
     jobsResult,
     candidatesResult,
     applicationsResult,
     evaluationsResult,
   ] = await Promise.all([
     organizationQuery,
+    client.from("organization_members").select("organization_id, user_id, role, permissions"),
     client.from("jobs").select("*").order("created_at", { ascending: false }),
     client
       .from("candidates")
@@ -100,6 +103,7 @@ export async function loadWorkspace(userId: string): Promise<WorkspaceData> {
 
   const firstError = [
     organizationResult,
+    membershipResult,
     jobsResult,
     candidatesResult,
     applicationsResult,
@@ -110,6 +114,7 @@ export async function loadWorkspace(userId: string): Promise<WorkspaceData> {
   return {
     profile: profile as Profile,
     organizations: (organizationResult.data ?? []) as Organization[],
+    memberships: (membershipResult.data ?? []) as OrganizationMembership[],
     jobs: (jobsResult.data ?? []) as Job[],
     candidates: (candidatesResult.data ?? []) as Candidate[],
     applications: (applicationsResult.data ?? []) as Application[],
@@ -193,6 +198,7 @@ export async function createUser(input: {
   organizationId?: string;
   organizationName?: string;
   workspaceMode?: WorkspaceMode;
+  permissions?: string[];
 }) {
   const client = requireClient();
   const { data, error } = await client.functions.invoke("create-user", {

@@ -18,7 +18,7 @@ Deno.serve(async (request) => {
     if (profile?.platform_role !== "platform_admin") return json({ error: "Platform administrator access required." }, 403);
 
     const body = await request.json();
-    const { email, password, fullName, role, organizationId, organizationName, workspaceMode = "recruitment" } = body;
+    const { email, password, fullName, role, organizationId, organizationName, workspaceMode = "recruitment", permissions = [] } = body;
     if (!email || !password || !fullName || !["customer", "platform_admin"].includes(role)) return json({ error: "Email, password, name, and a valid role are required." }, 400);
     if (password.length < 10) return json({ error: "The temporary password must contain at least 10 characters." }, 400);
 
@@ -43,7 +43,9 @@ Deno.serve(async (request) => {
       const profileUpdate = await admin.from("profiles").update({ full_name: fullName, email, platform_role: role }).eq("id", userId);
       if (profileUpdate.error) throw profileUpdate.error;
       if (organization) {
-        const membership = await admin.from("organization_members").insert({ organization_id: organization.id, user_id: userId, role: "owner" });
+        const allowedPermissions = ["manage_jobs", "manage_candidates", "manage_consultants", "manage_accounts"];
+        const safePermissions = Array.isArray(permissions) ? permissions.filter((item) => allowedPermissions.includes(item)) : [];
+        const membership = await admin.from("organization_members").insert({ organization_id: organization.id, user_id: userId, role: "recruiter", permissions: safePermissions });
         if (membership.error) throw membership.error;
       }
     } catch (error) {
