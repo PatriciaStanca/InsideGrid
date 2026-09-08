@@ -1,7 +1,6 @@
 [build]
-  base = "src/CvDatabase.Web"
-  command = "npm ci && npm run build"
-  publish = "dist"
+  command = "npm --prefix src/CvDatabase.Web ci && npm --prefix src/CvDatabase.Web run build"
+  publish = "src/CvDatabase.Web/dist"
 
 [[redirects]]
   from = "/*"
