@@ -26,6 +26,8 @@ test("covers the required ATS demo flow", async ({ page }, testInfo) => {
   await expect(
     page.getByRole("heading", { name: "Recruitment overview" }),
   ).toBeVisible();
+  if (testInfo.project.name === "desktop")
+    await page.screenshot({ path: "/tmp/insidegrid-workspace-v3.png", fullPage: true });
 
   await page.getByRole("button", { name: /Pipeline/ }).click();
   await expect(
