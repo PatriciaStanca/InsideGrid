@@ -1,141 +1,144 @@
-# InsideGrid
+# InsideGrid ATS
 
-Enterprise-inriktad CV- och kompetensdatabas byggd med .NET 9 API och React/Vite-klient.
+InsideGrid is a focused, multi-tenant applicant tracking system for hiring teams and consulting firms. It connects organizations, jobs or assignments, candidates, and job-specific applications in one compact workflow.
 
-Målbilden är ett CRM-liknande system för konsultbolag där uppdragsförfrågningar, kompetenser, tillgänglighet, AI-matchning och kundanpassade CV:n hänger ihop.
+## Assignment coverage
 
-Slogan: **Know who fits before you pitch.**
+- Platform administrators can create administrator and customer accounts.
+- Customers can sign in with Supabase Auth.
+- Customers can create jobs or client assignments.
+- Customers can create reusable candidate profiles, including LinkedIn URLs.
+- Candidates are connected to jobs through normalized application records.
+- A compact Kanban board shows candidates by stage.
+- The board can be filtered by job and candidate name.
+- Platform administrators can select a customer organization and manage its records.
+- AI Insights compares verified profile information with job requirements without making automated hiring decisions.
+- Every business record is isolated by organization using PostgreSQL Row Level Security.
 
-## Kör backend
+## Product modes
 
-```bash
-dotnet run --project src/CvDatabase.Api --urls http://127.0.0.1:5099
-```
+The same data model supports three organization-level workspace modes:
 
-Utan connection string kör API:t med in-memory testdata. För riktig SQL-databas, sätt `ConnectionStrings:Default`.
+- `recruitment`: recruit external candidates for internal roles.
+- `consulting`: match employees, subcontractors, or external candidates with client assignments.
+- `hybrid`: support both workflows.
 
-```bash
-dotnet user-secrets set "ConnectionStrings:Default" "Host=...;Database=cvdatabase;Username=...;Password=...;SSL Mode=Require" --project src/CvDatabase.Api
-```
+Workspace mode changes labels and defaults; it is not an authentication role. The MVP authorization roles are `platform_admin` and `customer`.
 
-Lokal databas med Docker:
-
-```bash
-docker compose up -d postgres
-dotnet user-secrets set "ConnectionStrings:Default" "Host=localhost;Port=5432;Database=cvdatabase;Username=cvdatabase;Password=cvdatabase_dev_password" --project src/CvDatabase.Api
-```
-
-Starta sedan om API:t. Utan connection string används fortfarande in-memory-data.
-
-API:t använder JWT-inloggning med e-post och lösenord.
-
-Utvecklingskonton:
-
-- `admin@cvdatabase.local` / `Admin123!`
-- `manager@cvdatabase.local` / `Manager123!`
-- `employee@cvdatabase.local` / `Employee123!`
-
-Logga in:
-
-```bash
-curl -X POST http://127.0.0.1:5099/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"manager@cvdatabase.local","password":"Manager123!"}'
-```
-
-Skicka sedan token som:
+## Architecture
 
 ```text
-Authorization: Bearer <accessToken>
+React 19 + Vite
+        |
+        | Supabase publishable key + user JWT
+        v
+Supabase Auth ---- PostgreSQL + RLS
+        |                   |
+        |                   +-- organizations / memberships
+        |                   +-- jobs / candidates / applications
+        |                   +-- activities / AI evaluations
+        v
+Edge Functions
+  create-user          server-only privileged account creation
+  evaluate-candidate   authenticated, tenant-scoped AI insights
 ```
 
-I produktion ska testkonton tas bort, JWT-nyckeln flyttas till secrets/Key Vault och helst ersättas med Microsoft Entra ID eller annan OIDC-provider.
+The browser never receives a Supabase secret or service-role key. The `create-user` function verifies that the caller is a platform administrator before using privileged APIs.
 
-## Kör frontend
+## Run locally
 
 ```bash
 cd src/CvDatabase.Web
 npm install
+cp .env.example .env.local
 npm run dev
 ```
 
-Öppna `http://127.0.0.1:5173`.
+Until valid Supabase configuration is added, the login screen offers an interactive in-memory demo. Demo mode is for product review only; live delivery must use Supabase.
 
-## OpenAI
+Required browser environment variables:
 
-Sätt API-nyckeln som user secret eller miljövariabel. Lägg inte nyckeln i git.
+```env
+VITE_SUPABASE_URL=https://uunaexgeunlvizbzgqrb.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=your_publishable_key
+```
+
+The publishable key is expected in browser code and is not a secret. Authorization still depends on tested RLS policies. Never add a secret or service-role key to a `VITE_` variable.
+
+## Configure the Supabase project
+
+The target project reference is `uunaexgeunlvizbzgqrb`.
+
+1. Install the Supabase CLI and authenticate locally.
+2. Link this directory to the existing project.
+3. Review the project region before storing candidate data.
+4. Apply the versioned migration.
+5. Deploy both Edge Functions.
+6. Add `OPENAI_API_KEY` as an Edge Function secret if live model-backed insights are required.
 
 ```bash
-dotnet user-secrets init --project src/CvDatabase.Api
-dotnet user-secrets set "OpenAI:ApiKey" "din-nyckel" --project src/CvDatabase.Api
+supabase login
+supabase link --project-ref uunaexgeunlvizbzgqrb
+supabase db push
+supabase functions deploy create-user
+supabase functions deploy evaluate-candidate
+supabase secrets set OPENAI_API_KEY=your_key
 ```
 
-Utan nyckel fungerar appen med lokal matchning och lokal CV-mall.
+Supabase automatically provides its URL and platform keys to deployed functions. The source code uses the server-side function environment and never commits those values.
 
-## Viktiga endpoints
+## Bootstrap the first platform administrator
 
-- `GET /api/candidates`
-- `POST /api/candidates`
-- `GET /api/candidates/{id}/cv.pdf`
-- `POST /api/auth/login`
-- `POST /api/auth/users`
-- `POST /api/ai/match`
-- `POST /api/ai/generate-cv`
+The first administrator must exist before the in-app administrator flow can be used:
 
-## Kodstruktur
+1. Create the user in Supabase Dashboard under Authentication > Users.
+2. The migration trigger creates the corresponding `profiles` record.
+3. Promote only that verified user in SQL Editor:
 
-API:t följer samma riktning som dina tidigare .NET API:n:
+```sql
+update public.profiles
+set platform_role = 'platform_admin'
+where email = 'verified-admin@example.com';
+```
+
+Use a dedicated demo administrator account for delivery, not a personal password. Rotate or remove it after the review period.
+
+## AI Insights
+
+The `evaluate-candidate` function:
+
+- loads the application, candidate, and job through the caller's RLS-scoped client;
+- uses only supplied profile and job facts;
+- returns supported strengths, gaps or unknowns, and follow-up questions;
+- stores the input snapshot, model identifier, actor, and result;
+- never moves, rejects, or hires a candidate.
+
+If `OPENAI_API_KEY` is absent, the function returns a transparent rule-based fallback instead of pretending that a model was called.
+
+## Verification
+
+```bash
+cd src/CvDatabase.Web
+npm run build
+npm run test:e2e
+npm audit
+```
+
+The browser suite covers the interactive ATS workflow on desktop and checks mobile viewport overflow. RLS must also be tested against the linked Supabase project with at least two customer organizations before production use.
+
+## Important files
 
 ```text
-src/CvDatabase.Api/
-  Controllers/             # Tunna HTTP-controllers
-  Core/
-    Common/                # ServiceResult och gemensam core-hjälp
-    Services/              # CV-, AI- och PDF-logik
-  Data/
-    Context/               # EF Core DbContext
-    DTOs/                  # API-kontrakt/DTOs
-    Entities/              # Databasentiteter
-    Interfaces/            # Repository-kontrakt
-    Repositories/          # EF/in-memory repositories
-  Extensions/              # ServiceCollection-registreringar
-  Infrastructure/
-    Ai/                    # OpenAI-klient
-    Security/              # Roller, policies, demo-auth och säkerhetsheaders
+src/CvDatabase.Web/src/main.tsx                 ATS interface and workflows
+src/CvDatabase.Web/src/lib/api.ts               Supabase data access
+src/CvDatabase.Web/src/lib/supabase.ts          safe browser client
+src/CvDatabase.Web/src/data/demo.ts             isolated interactive demo data
+supabase/migrations/202609070001_initial_ats.sql schema, RLS, audit trail, storage
+supabase/functions/create-user/index.ts          privileged account creation
+supabase/functions/evaluate-candidate/index.ts   AI decision support
+docs/ats-product-research.md                     research and product decisions
 ```
 
-Nästa större refaktor kan dela ut `Core`, `Data` och `Infrastructure` till separata projekt om lösningen växer.
+## Delivery status
 
-## Nästa produktionssteg
-
-- Skapa EF Core-migrationer för PostgreSQL och kör dem mot cloud-databasen.
-- Lägg till Microsoft Entra ID, grupper och riktiga roller.
-- Lägg till auditlogg för CV-visningar, ändringar, AI-genereringar och PDF-export.
-- Lägg till filuppladdning och parser för befintliga CV:n.
-- Lägg till vektorsökning för semantisk matchning över kompetenser och projekt.
-- Lägg till uppdragsförfrågningar, shortlist, CV-versioner och CRM-statusar.
-
-Se även:
-
-- [Arkitektur](docs/architecture.md)
-- [Produkt-roadmap](docs/product-roadmap.md)
-- [Databas och molnstart](docs/database-and-cloud-start.md)
-- [Säkerhet och struktur](docs/security-and-structure.md)
-
-## Enklaste drift utan egen server
-
-Rekommenderad start:
-
-1. Azure App Service för .NET API:t.
-2. Azure Static Web Apps eller App Service för React-klienten.
-3. Azure Database for PostgreSQL Flexible Server som managed SQL-databas.
-4. Microsoft Entra ID för inloggning och roller.
-5. OpenAI API eller Azure OpenAI för AI-matchning.
-
-## Portfolio deployment
-
-Frontendens API-adress kan sättas med `VITE_API_BASE_URL`. Det gör att React-klienten kan publiceras separat från .NET-API:t och bäddas in på `patriciastanca.com/insidegrid`.
-
-Portfoliosidan ska länka eller bädda in den publicerade klienten. Då behöver ingen källkod kopieras till det publika portfolio-repot, och nya versioner av InsideGrid kan publiceras från det privata repot.
-
-Det här betyder att du inte driftar en egen server. Azure tar hand om patchning, HTTPS, skalning och databastjänsten.
+The application and Supabase implementation are complete locally. A successful local build or interactive demo does not prove that the remote project is configured. Live status requires verified migration output, deployed-function output, real admin/customer login, tenant-isolation checks, and a hosted URL.

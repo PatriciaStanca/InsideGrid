@@ -4,8 +4,10 @@ using CvDatabase.Api.Infrastructure.Ai;
 
 namespace CvDatabase.Api.Core.Services;
 
-public sealed class CvAssistantService(ICandidateRepository repository, OpenAiCvAssistant openAi)
+public sealed class CvAssistantService(ICandidateRepository repository, OpenAiCvAssistant openAi, IConfiguration configuration)
 {
+    private readonly bool _allowExternalCandidateData = configuration.GetValue("AI:AllowExternalCandidateData", false);
+
     public async Task<JobMatchResponse> MatchJobAsync(JobMatchRequest request, CancellationToken cancellationToken)
     {
         var analysis = AnalyzeJobAdvertisement(request.JobAdvertisement);
@@ -17,7 +19,7 @@ public sealed class CvAssistantService(ICandidateRepository repository, OpenAiCv
             .Take(Math.Clamp(request.MaxCandidates, 1, 20))
             .ToArray();
 
-        if (openAi.IsConfigured)
+        if (_allowExternalCandidateData && openAi.IsConfigured)
         {
             var enriched = await openAi.MatchCandidatesAsync(request, candidates, cancellationToken);
             if (enriched.Candidates.Count > 0)
@@ -45,7 +47,7 @@ public sealed class CvAssistantService(ICandidateRepository repository, OpenAiCv
         var candidate = await repository.FindAsync(request.CandidateId, cancellationToken)
             ?? throw new InvalidOperationException("Kandidaten hittades inte.");
 
-        if (openAi.IsConfigured)
+        if (_allowExternalCandidateData && openAi.IsConfigured)
         {
             var aiResponse = await openAi.GenerateTailoredCvAsync(new OpenAiCandidateContext(candidate, request.JobAdvertisement, request.Language), cancellationToken);
             if (!string.IsNullOrWhiteSpace(aiResponse.Markdown))
@@ -102,7 +104,7 @@ public sealed class CvAssistantService(ICandidateRepository repository, OpenAiCv
             markdown,
             matchingSkills,
             [
-                "AI-nyckel saknas, så texten är genererad med lokal mall och bör granskas manuellt.",
+                "External AI processing is disabled, so this text was generated with the local privacy-safe template and should be reviewed.",
                 "CV:t får bara förstärka verifierad erfarenhet. Lägg inte till saknade kompetenser utan att kandidaten bekräftar dem."
             ]);
     }

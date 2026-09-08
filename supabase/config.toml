@@ -1,0 +1,10 @@
+project_id = "uunaexgeunlvizbzgqrb"
+
+[functions.create-user]
+verify_jwt = true
+
+[functions.evaluate-candidate]
+verify_jwt = true
+
+[functions.generate-job-description]
+verify_jwt = true

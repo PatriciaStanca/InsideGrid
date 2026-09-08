@@ -12,6 +12,9 @@ dist/
 # Local tooling
 .DS_Store
 .playwright-mcp/
+test-results/
+playwright-report/
+supabase/.temp/
 
 # Secrets and local config
 *.Development.local.json

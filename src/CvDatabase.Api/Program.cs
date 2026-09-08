@@ -9,6 +9,7 @@ using System.Text;
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Configuration.AddJsonFile("appsettings.Development.local.json", optional: true, reloadOnChange: true);
 
 builder.Services.AddProblemDetails();
 builder.Services.AddRateLimiter(options =>
@@ -37,9 +38,18 @@ builder.Services.AddCors(options =>
 });
 
 var jwtSection = builder.Configuration.GetSection("Jwt");
+var supabaseUrl = builder.Configuration["Supabase:Url"]?.TrimEnd('/');
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
+        if (!string.IsNullOrWhiteSpace(supabaseUrl))
+        {
+            options.Authority = $"{supabaseUrl}/auth/v1";
+            options.Audience = "authenticated";
+            options.RequireHttpsMetadata = true;
+            return;
+        }
+
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
@@ -92,8 +102,6 @@ app.UseExceptionHandler(exceptionApp =>
     });
 });
 app.UseSecurityHeaders();
-app.UseDefaultFiles();
-app.UseStaticFiles();
 if (app.Configuration.GetValue<bool>("Auth:UseDemoAuth"))
 {
     app.UseDemoAuthentication();
@@ -104,6 +112,5 @@ app.UseAuthorization();
 app.UseRateLimiter();
 
 app.MapControllers();
-app.MapFallbackToFile("index.html");
 
 app.Run();

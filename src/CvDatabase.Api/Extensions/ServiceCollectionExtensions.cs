@@ -15,6 +15,7 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddApplicationServices(this IServiceCollection services)
     {
         services.AddHttpClient<OpenAiCvAssistant>();
+        services.AddHttpClient<GeminiJobResearchService>();
         services.AddHttpContextAccessor();
         services.AddSingleton<PdfExportService>();
         services.AddScoped<CurrentUser>();

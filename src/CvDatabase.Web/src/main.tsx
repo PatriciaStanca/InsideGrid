@@ -1,2607 +1,2216 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { AlertTriangle, Apple, Bell, BriefcaseBusiness, CalendarDays, Chrome, ClipboardList, FilePenLine, Languages, LayoutDashboard, LogOut, Mail, MapPin, MessageSquareText, Phone, Save, Search, Settings, ShieldCheck, Sparkles, UserRound, UserRoundCog, UsersRound, X } from "lucide-react";
+import {
+  ArrowRight,
+  BarChart3,
+  BriefcaseBusiness,
+  Building2,
+  Check,
+  ChevronDown,
+  CircleUserRound,
+  ExternalLink,
+  Filter,
+  Grid2X2,
+  LayoutDashboard,
+  Linkedin,
+  LoaderCircle,
+  LogOut,
+  Menu,
+  Plus,
+  Search,
+  ShieldCheck,
+  Sparkles,
+  UserPlus,
+  Users,
+  X,
+} from "lucide-react";
 import "./styles.css";
+import { demoWorkspace } from "./data/demo";
+import {
+  createApplication,
+  createCandidate,
+  createJob,
+  createUser,
+  generateJobDescription,
+  getSession,
+  loadWorkspace,
+  onAuthChange,
+  requestAiEvaluation,
+  researchJobWithAi,
+  signIn,
+  signOut,
+  updateApplicationStage,
+} from "./lib/api";
+import { hasSupabaseConfig } from "./lib/supabase";
+import type {
+  AiEvaluation,
+  Application,
+  ApplicationStage,
+  Candidate,
+  Job,
+  Organization,
+  WorkspaceData,
+  WorkspaceMode,
+} from "./types";
 
-type ProjectExperience = {
-  customer: string;
-  role: string;
-  description: string;
-  technologies: string[];
-  startDate: string;
-  endDate?: string;
+type View = "dashboard" | "pipeline" | "jobs" | "candidates" | "team";
+type Modal = "job" | "candidate" | "user" | null;
+const stages: {
+  id: Exclude<ApplicationStage, "rejected">;
+  label: string;
+  tone: string;
+}[] = [
+  { id: "new", label: "New", tone: "slate" },
+  { id: "review", label: "Review", tone: "amber" },
+  { id: "interview", label: "Interview", tone: "violet" },
+  { id: "offer", label: "Offer", tone: "blue" },
+  { id: "hired", label: "Hired", tone: "green" },
+];
+const titleByView: Record<View, string> = {
+  dashboard: "Overview",
+  pipeline: "Candidate pipeline",
+  jobs: "Jobs",
+  candidates: "Talent",
+  team: "Access & accounts",
 };
-
-type CandidateProfile = {
-  id: string;
-  name: string;
-  title: string;
-  email: string;
-  phone: string;
-  location: string;
-  availability: string;
-  currentAssignment: string;
-  availableFrom?: string;
-  experienceYears: number;
-  avatarDataUrl?: string;
-  skills: string[];
-  languages: string[];
-  projects: ProjectExperience[];
-  summary: string;
-  notes: string;
-  updatedAt: string;
-};
-
-type SkillDetail = {
-  name: string;
-  level: "Grund" | "Van" | "Stark" | "Expert";
-  comment: string;
-};
-
-type CandidateMatch = {
-  candidateId: string;
-  name: string;
-  title: string;
-  availability: string;
-  score: number;
-  matchingSkills: string[];
-  missingKeywords: string[];
-  reasoning: string;
-  strongSignals: string[];
-  risks: string[];
-  cvGaps: string[];
-  suggestedCvVersion: string;
-  recommendedActions: string[];
-};
-
-type JobAdvertisementAnalysis = {
-  role: string;
-  sourceName: string;
-  sourceUrl: string;
-  isLinkOnly: boolean;
-  companyName: string;
-  recruitingCompany: string;
-  contactNames: string[];
-  contactEmails: string[];
-  mustRequirements: string[];
-  shouldRequirements: string[];
-  technologies: string[];
-  industry: string;
-  languages: string[];
-  seniority: string;
-  location: string;
-  remotePossible: boolean;
-  startDate?: string;
-  assignmentType: string;
-  keywords: string[];
-};
-
-type JobMatchResponse = {
-  summary: string;
-  analysis: JobAdvertisementAnalysis;
-  candidates: CandidateMatch[];
-};
-
-type ApplicationRecord = {
-  id: string;
-  customer: string;
-  role: string;
-  advertisement: string;
-  candidateIds: string[];
-  candidateNames: string[];
-  status: string;
-  feedback: string;
-  sourceUrl: string;
-  createdBy: string;
-  appliedAt: string;
-  updatedAt: string;
-};
-
-type DuplicateCandidate = {
-  applicationId: string;
-  customer: string;
-  role: string;
-  status: string;
-  similarity: number;
-  reason: string;
-};
-
-type DuplicateCheckResponse = {
-  isLikelyDuplicate: boolean;
-  matches: DuplicateCandidate[];
-};
-
-type GapDecision = {
-  status: "linked" | "missing";
-  reference: string;
-  comment?: string;
-};
-
-type KnowledgeDraft = {
-  candidateId: string;
-  gap: string;
-  keyword: string;
-  projectIndex: number;
-  statement: string;
-  reference: string;
-};
-
-type LoginResponse = {
-  accessToken: string;
-  expiresAt: string;
-  user: {
-    id: string;
-    email: string;
-    displayName: string;
-    role: string;
-    isActive: boolean;
-  };
-};
-
-type UiLanguage = "en" | "sv";
-type AppView = "dashboard" | "candidates" | "applications" | "assignments" | "matchAssignment" | "settings" | "candidate";
-type CandidateColumnKey = "name" | "email" | "phone" | "experience" | "skills" | "status" | "updated";
-
-const candidateColumnDefaults: Record<CandidateColumnKey, number> = {
-  name: 240,
-  email: 230,
-  phone: 170,
-  experience: 270,
-  skills: 330,
-  status: 140,
-  updated: 132
-};
-
-const candidateColumnMinWidths: Record<CandidateColumnKey, number> = {
-  name: 170,
-  email: 160,
-  phone: 135,
-  experience: 170,
-  skills: 190,
-  status: 105,
-  updated: 105
-};
-
-const uiCopy = {
-  en: {
-    tagline: "AI, CVs and assignments",
-    loginEyebrow: "Consultant intelligence platform",
-    loginTitle: "Find the right consultant before you pitch.",
-    loginText: "Match job ads against verified skills, create tailored CVs and keep every application under control.",
-    email: "Email",
-    password: "Password",
-    signIn: "Sign in",
-    demo: "Demo account",
-    secureLogin: "Secure sign in",
-    verifiedData: "Verified profile data",
-    tailoredCv: "Tailored CV exports",
-    applicationTracking: "Application tracking",
-    dashboard: "Home",
-    applications: "Applications",
-    candidates: "Candidates",
-    assignments: "Assignments",
-    matchAssignment: "Match Assignment",
-    settings: "Settings",
-    permissions: "Permissions",
-    dashboardTitle: "Home",
-    signedInAs: "Signed in as",
-    searchPlaceholder: "Search consultants, skills, customers...",
-    availability: "Availability",
-    all: "All",
-    available: "Available",
-    busy: "Booked",
-    openMenu: "Open menu",
-    closeMenu: "Close menu",
-    consultants: "Consultants",
-    active: "active",
-    updatedLast30Days: "updated last 30 days",
-    assignmentsKpi: "Assignments",
-    needsMatching: "need matching",
-    ongoing: "ongoing",
-    waitingForFeedback: "waiting for feedback",
-    aiMatches: "AI matches",
-    created: "created",
-    readyForReview: "ready for review",
-    nextSteps: "Next steps",
-    priority: "Priority",
-    matchNewAd: "Match new job ad",
-    matchNewAdText: "Analyze requirements and create a shortlist.",
-    followUpApplications: "Follow up applications",
-    followUpApplicationsText: "waiting for feedback.",
-    reviewProfiles: "Review profiles",
-    reviewProfilesText: "Check CV knowledge base and availability.",
-    latestApplications: "Latest applications",
-    noApplicationsSaved: "No applications saved yet.",
-    defaultView: "Default",
-    viewSettings: "View Settings",
-    importExport: "Import/Export",
-    addCandidate: "Add Candidate",
-    searchCandidatesPlaceholder: "Search candidates, keywords, notes...",
-    sortedByLastActivity: "Sorted by Last Activity Date",
-    filters: "Filters",
-    name: "Name",
-    personalEmail: "Personal Email",
-    personalPhone: "Personal Phone",
-    experience: "Experience",
-    skills: "Skills",
-    status: "Status",
-    lastUpdated: "Last updated",
-    resizeColumn: "Resize column",
-    yearsShort: "yrs",
-    customer: "Customer",
-    role: "Role",
-    consultantsColumn: "Consultants",
-    feedback: "Feedback",
-    appliedAt: "Applied",
-    updatedAt: "Updated",
-    source: "Source",
-    openAd: "Open ad",
-    noApplicationsMatch: "No applications match the filters.",
-    clearFilters: "Clear filters",
-    allConsultants: "All consultants",
-    allStatuses: "All statuses",
-    allDates: "All dates",
-    last7Days: "Last 7 days",
-    last30Days: "Last 30 days",
-    last90Days: "Last 90 days",
-    searchApplicationsPlaceholder: "Search applications, customers, roles...",
-    searchAssignmentsPlaceholder: "Search assignments, customers, requirements...",
-    createdBy: "Created by",
-    assignmentType: "Type",
-    employee: "Employee",
-    currentAssignment: "Current assignment",
-    contractPeriod: "Contract period",
-    contractPdf: "Contract PDF",
-    uploadPdf: "Upload PDF",
-    missingContract: "Missing contract",
-    assignmentDatabase: "Assignment database",
-    assignmentsDescription: "Employees, current assignments and contract documents for managers.",
-    noAssignment: "No active assignment",
-    noActiveAssignments: "No active assignments.",
-    activeAssignment: "Active assignment"
-  },
-  sv: {
-    tagline: "AI, CV och uppdrag",
-    loginEyebrow: "Intelligensplattform för konsulter",
-    loginTitle: "Hitta rätt konsult innan du pitchar.",
-    loginText: "Matcha annonser mot verifierade kompetenser, skapa anpassade CV:n och håll koll på varje ansökan.",
-    email: "E-post",
-    password: "Lösenord",
-    signIn: "Logga in",
-    demo: "Testkonto",
-    secureLogin: "Säker inloggning",
-    verifiedData: "Verifierad profildata",
-    tailoredCv: "Anpassade CV-exporter",
-    applicationTracking: "Ansökningsspårning",
-    dashboard: "Home",
-    applications: "Ansökningar",
-    candidates: "Kandidater",
-    assignments: "Uppdrag",
-    matchAssignment: "Match Assignment",
-    settings: "Inställningar",
-    permissions: "Behörigheter",
-    dashboardTitle: "Home",
-    signedInAs: "Inloggad som",
-    searchPlaceholder: "Sök konsulter, kompetenser, kunder...",
-    availability: "Tillgänglighet",
-    all: "Alla",
-    available: "Tillgänglig",
-    busy: "Upptagen",
-    openMenu: "Öppna meny",
-    closeMenu: "Stäng meny",
-    consultants: "Konsulter",
-    active: "aktiva",
-    updatedLast30Days: "uppdaterade senaste 30 dagar",
-    assignmentsKpi: "Uppdrag",
-    needsMatching: "behöver matchas",
-    ongoing: "pågående",
-    waitingForFeedback: "väntar på återkoppling",
-    aiMatches: "AI-matchningar",
-    created: "skapade",
-    readyForReview: "redo att granskas",
-    nextSteps: "Nästa steg",
-    priority: "Prioriterat",
-    matchNewAd: "Matcha ny annons",
-    matchNewAdText: "Analysera krav och skapa shortlist.",
-    followUpApplications: "Följ upp ansökningar",
-    followUpApplicationsText: "väntar på återkoppling.",
-    reviewProfiles: "Granska profiler",
-    reviewProfilesText: "Kontrollera CV-kunskapsbas och tillgänglighet.",
-    latestApplications: "Senaste ansökningar",
-    noApplicationsSaved: "Inga ansökningar sparade ännu.",
-    defaultView: "Standard",
-    viewSettings: "Vyinställningar",
-    importExport: "Import/export",
-    addCandidate: "Lägg till kandidat",
-    searchCandidatesPlaceholder: "Sök kandidater, nyckelord, anteckningar...",
-    sortedByLastActivity: "Sorterat efter senaste aktivitet",
-    filters: "Filter",
-    name: "Namn",
-    personalEmail: "E-post",
-    personalPhone: "Telefon",
-    experience: "Erfarenhet",
-    skills: "Kompetenser",
-    status: "Status",
-    lastUpdated: "Senast uppdaterad",
-    resizeColumn: "Ändra kolumnbredd",
-    yearsShort: "år",
-    customer: "Kund",
-    role: "Roll",
-    consultantsColumn: "Konsulter",
-    feedback: "Återkoppling",
-    appliedAt: "Ansökt",
-    updatedAt: "Uppdaterad",
-    source: "Källa",
-    openAd: "Visa annons",
-    noApplicationsMatch: "Inga ansökningar matchar filtren.",
-    clearFilters: "Rensa filter",
-    allConsultants: "Alla konsulter",
-    allStatuses: "Alla statusar",
-    allDates: "Alla datum",
-    last7Days: "Senaste 7 dagarna",
-    last30Days: "Senaste 30 dagarna",
-    last90Days: "Senaste 90 dagarna",
-    searchApplicationsPlaceholder: "Sök ansökningar, kunder, roller...",
-    searchAssignmentsPlaceholder: "Sök uppdrag, kunder, krav...",
-    createdBy: "Skapad av",
-    assignmentType: "Typ",
-    employee: "Anställd",
-    currentAssignment: "Nuvarande uppdrag",
-    contractPeriod: "Avtalsperiod",
-    contractPdf: "Avtal PDF",
-    uploadPdf: "Ladda upp PDF",
-    missingContract: "Avtal saknas",
-    assignmentDatabase: "Uppdragsdatabas",
-    assignmentsDescription: "Anställda, aktuella uppdrag och avtalsdokument för managers.",
-    noAssignment: "Inget aktivt uppdrag",
-    noActiveAssignments: "Inga aktiva uppdrag.",
-    activeAssignment: "Aktivt uppdrag"
-  }
-};
-
-const tokenStorageKey = "cvdatabase.accessToken";
-const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
-
-function apiUrl(path: string) {
-  return `${apiBaseUrl}${path}`;
-}
-
-function extractFirstUrl(text: string) {
-  return text.match(/https?:\/\/[^\s]+/i)?.[0] ?? "";
-}
-
-function initials(name: string) {
-  return name
-    .split(" ", 2)
+const departmentOptions = [
+  "Data & AI",
+  "Engineering",
+  "Product & Design",
+  "Sales",
+  "Marketing",
+  "Finance",
+  "People & HR",
+  "Operations",
+  "Customer Success",
+  "Legal & Compliance",
+];
+const locationOptions = [
+  "Remote · Sweden",
+  "Remote · Europe",
+  "Hybrid · Gothenburg",
+  "Hybrid · Stockholm",
+  "On-site · Gothenburg",
+  "On-site · Stockholm",
+];
+const employmentTypeOptions = [
+  "Full-time",
+  "Part-time",
+  "Fixed-term",
+  "Consulting assignment",
+  "Contract",
+  "Internship",
+];
+const initials = (name: string) =>
+  name
+    .split(/\s+/)
     .map((part) => part[0])
     .join("")
-    .toUpperCase() || "IG";
-}
+    .slice(0, 2)
+    .toUpperCase();
+const daysInStage = (value: string) =>
+  Math.max(
+    0,
+    Math.floor((Date.now() - new Date(value).getTime()) / 86_400_000),
+  );
 
-function fileSafeName(value: string) {
-  return value
-    .trim()
-    .replaceAll(" ", "-")
-    .replace(/[^a-zA-Z0-9ÅÄÖåäö_-]/g, "");
-}
-
-function filenameFromDisposition(header: string | null) {
-  return header?.match(/filename="?([^"]+)"?/i)?.[1];
-}
-
-function projectPeriod(project: ProjectExperience) {
-  const start = project.startDate?.slice(0, 4) ?? "";
-  const end = project.endDate?.slice(0, 4) ?? "pågående";
-  return start ? `${start} - ${end}` : end;
-}
-
-function extractSkillDetails(notes: string): Record<string, SkillDetail> {
-  const match = notes.match(/\[SkillDetails\](.+?)\[\/SkillDetails\]/s);
-  if (!match) return {};
-  try {
-    const parsed = JSON.parse(match[1]) as SkillDetail[];
-    return Object.fromEntries(parsed.map((item) => [item.name.toLowerCase(), item]));
-  } catch {
-    return {};
-  }
-}
-
-function notesWithoutSkillDetails(notes: string) {
-  return notes.replace(/\n?\[SkillDetails\].+?\[\/SkillDetails\]/s, "").trim();
-}
-
-function buildSkillDetailsNote(skills: SkillDetail[]) {
-  return `[SkillDetails]${JSON.stringify(skills)}[/SkillDetails]`;
-}
-
-function getSkillDetail(skill: string, candidate: CandidateProfile): SkillDetail {
-  return extractSkillDetails(candidate.notes)[skill.toLowerCase()] ?? {
-    name: skill,
-    level: "Van",
-    comment: ""
-  };
-}
-
-function skillEvidence(skill: string, candidate: CandidateProfile) {
-  const normalized = skill.toLowerCase();
-  const projects = candidate.projects.filter((project) =>
-    project.technologies.some((technology) => technology.toLowerCase() === normalized)
-    || project.description.toLowerCase().includes(normalized));
-  const lastUsed = projects
-    .map((project) => project.endDate ?? project.startDate)
-    .sort()
-    .at(-1);
-
-  return {
-    projectCount: projects.length,
-    lastUsed: lastUsed?.slice(0, 4) ?? "ej angivet"
-  };
-}
-
-function extractGapKeyword(text: string) {
-  const explicit = text.match(/Saknar explicit\s+([^.,]+)|Annonsen nämner\s+([^,]+)/i);
-  return (explicit?.[1] ?? explicit?.[2] ?? text)
-    .replace("men det finns inte tydligt verifierat i kandidatens CV", "")
-    .replace("i profilen", "")
-    .trim()
-    .toLowerCase();
-}
-
-function normalizeGapTerm(term: string) {
-  return term
-    .replace("ingestion", "dataintegration")
-    .replace("modeling", "datamodellering")
-    .replace("modelling", "datamodellering")
-    .replace("transformation", "etl")
-    .replace("orchestration", "etl")
-    .replace("warehouse", "data warehouse")
-    .replace("warehouses", "data warehouse")
-    .replace("pipeline", "etl")
-    .replace("pipelines", "etl");
-}
-
-function isLooseMatch(value: string, term: string) {
-  const source = value.toLowerCase();
-  const target = term.toLowerCase();
-  return source.includes(target) || target.split(/\s+/).some((part) => part.length > 3 && source.includes(part));
-}
-
-function buildReviewContext(candidate: CandidateProfile, decisions: Record<string, GapDecision>) {
-  return Object.entries(decisions)
-    .filter(([key]) => key.startsWith(`${candidate.id}:`))
-    .map(([key, decision]) => {
-      const keyword = key.split(":").slice(1).join(":");
-      if (decision.status === "linked") {
-        return `- ${keyword}: använd endast verifierad referens "${decision.reference}".${decision.comment ? ` Kommentar: ${decision.comment}` : ""}`;
-      }
-      if (decision.status === "missing") {
-        return `- ${keyword}: saknas eller är inte verifierat. Lägg inte till detta i CV:t.${decision.comment ? ` Kommentar: ${decision.comment}` : ""}`;
-      }
-      return `- ${keyword}: använd endast verifierad referens "${decision.reference}".${decision.comment ? ` Kommentar: ${decision.comment}` : ""}`;
-    })
-    .join("\n");
-}
-
-async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const token = localStorage.getItem(tokenStorageKey);
-  const response = await fetch(apiUrl(path), {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options.headers ?? {})
-    }
-  });
-
-  if (!response.ok) {
-    throw new Error(await response.text());
-  }
-
-  return response.json() as Promise<T>;
-}
-
-function GapReview({
-  candidateId,
-  text,
-  decision,
-  references,
-  onDecision,
-  onOpenKnowledge
+function Login({
+  onDemo,
+  onAuthenticated,
 }: {
-  candidateId: string;
-  text: string;
-  decision?: GapDecision;
-  references: string[];
-  onDecision: (candidateId: string, gap: string, decision: GapDecision) => void;
-  onOpenKnowledge: (candidateId: string, gap: string, reference?: string) => void;
+  onDemo: () => void;
+  onAuthenticated: (userId: string) => Promise<void>;
 }) {
-  const keyword = extractGapKeyword(text);
-  const bestReference = references[0];
-  const currentReference = decision?.reference ?? bestReference ?? "";
-
-  function updateDecision(update: Partial<GapDecision>) {
-    onDecision(candidateId, text, {
-      status: update.status ?? decision?.status ?? "linked",
-      reference: update.reference ?? currentReference,
-      comment: update.comment ?? decision?.comment
-    });
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      const session = await signIn(email, password);
+      if (!session) throw new Error("No active session was returned.");
+      await onAuthenticated(session.user.id);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to sign in.");
+    } finally {
+      setBusy(false);
+    }
   }
-
   return (
-    <div className="gap-review">
-      <span>{text}</span>
-      {decision && (
-        <small className={`gap-status ${decision.status}`}>
-          {decision.status === "linked" ? `Kopplad: ${decision.reference || "profil"}` : "Ska inte läggas till"}
-        </small>
-      )}
-      <div className="gap-actions">
-        <button type="button" onClick={() => onOpenKnowledge(candidateId, text, currentReference || bestReference)}>
-          Koppla till CV
-        </button>
-        <button type="button" onClick={() => onOpenKnowledge(candidateId, text, currentReference || bestReference)}>
-          Lägg till i profil
-        </button>
-        <button type="button" onClick={() => updateDecision({ status: "missing", reference: keyword })}>
-          Saknas
-        </button>
-      </div>
-    </div>
+    <main className="auth-page">
+      <section className="auth-story">
+        <a className="brand brand-light" href="#">
+          <span className="brand-mark">
+            <Grid2X2 size={18} />
+          </span>
+          <span>InsideGrid</span>
+        </a>
+        <div className="auth-story-copy">
+          <span className="eyebrow">Hiring and consulting, in one place</span>
+          <h1>Keep every person and next step in view.</h1>
+          <p>
+            Manage recruitment pipelines or match consultants to client
+            assignments, with the context your team needs to make thoughtful
+            decisions.
+          </p>
+          <div className="mode-preview-grid">
+            <article>
+              <span>
+                <UserPlus size={18} />
+              </span>
+              <div>
+                <strong>Recruit employees</strong>
+                <small>Jobs, candidates, interviews and offers.</small>
+              </div>
+            </article>
+            <article>
+              <span>
+                <BriefcaseBusiness size={18} />
+              </span>
+              <div>
+                <strong>Place consultants</strong>
+                <small>Assignments, availability and fit.</small>
+              </div>
+            </article>
+          </div>
+        </div>
+        <p className="auth-note">
+          <ShieldCheck size={16} /> Each customer workspace keeps its data
+          separate.
+        </p>
+      </section>
+      <section className="auth-form-side">
+        <form className="auth-card" onSubmit={submit}>
+          <div className="mobile-brand">
+            <span className="brand-mark">
+              <Grid2X2 size={18} />
+            </span>{" "}
+            InsideGrid
+          </div>
+          <span className="eyebrow dark">InsideGrid workspace</span>
+          <h2>Welcome back</h2>
+          <p>Sign in with the account created for your team.</p>
+          <label>
+            Email address
+            <input
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="you@company.com"
+              required
+            />
+          </label>
+          <label>
+            Password
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="Enter your password"
+              required
+            />
+          </label>
+          {error && <div className="form-error">{error}</div>}
+          <button
+            className="primary-button wide"
+            type="submit"
+            disabled={busy || !hasSupabaseConfig}
+          >
+            {busy ? (
+              <LoaderCircle className="spin" size={17} />
+            ) : (
+              <>
+                Sign in <ArrowRight size={17} />
+              </>
+            )}
+          </button>
+          {!hasSupabaseConfig && (
+            <p className="config-note">
+              Live sign-in will be available when the Supabase key is connected.
+            </p>
+          )}
+          <div className="auth-divider">
+            <span>Want to look around first?</span>
+          </div>
+          <button
+            className="secondary-button wide"
+            type="button"
+            onClick={onDemo}
+          >
+            Explore interactive demo
+          </button>
+          <small className="privacy-note">
+            Candidate decisions always stay with people. AI only helps surface
+            evidence.
+          </small>
+        </form>
+      </section>
+    </main>
   );
 }
 
-function KnowledgeModal({
-  candidate,
-  draft,
-  onChange,
+function ModalShell({
+  title,
+  subtitle,
+  children,
   onClose,
-  onSave,
-  isBusy
-}: {
-  candidate: CandidateProfile;
-  draft: KnowledgeDraft;
-  onChange: (draft: KnowledgeDraft) => void;
+}: React.PropsWithChildren<{
+  title: string;
+  subtitle: string;
   onClose: () => void;
-  onSave: () => void;
-  isBusy: boolean;
-}) {
-  const selectedProject = candidate.projects[draft.projectIndex];
-
+}>) {
   return (
-    <div className="modal-backdrop" role="presentation">
-      <section className="knowledge-modal" role="dialog" aria-modal="true" aria-labelledby="knowledge-title">
-        <div className="modal-header">
+    <div className="modal-backdrop" onMouseDown={onClose}>
+      <section
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header>
           <div>
-            <strong id="knowledge-title">Koppla gap till CV och profil</strong>
-            <p>{candidate.name} · {draft.keyword}</p>
+            <span className="eyebrow dark">INSIDEGRID</span>
+            <h2>{title}</h2>
+            <p>{subtitle}</p>
           </div>
-          <button type="button" onClick={onClose}>Stäng</button>
-        </div>
-
-        <label>
-          Välj projekt att koppla till
-          <select
-            value={draft.projectIndex}
-            onChange={(event) => {
-              const projectIndex = Number(event.target.value);
-              const project = candidate.projects[projectIndex];
-              onChange({
-                ...draft,
-                projectIndex,
-                reference: project ? `Projekt: ${project.customer} - ${project.role}` : draft.reference
-              });
-            }}
-          >
-            {candidate.projects.map((project, index) => (
-              <option value={index} key={`${project.customer}-${project.role}-${project.startDate}`}>
-                {project.customer} - {project.role}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        {selectedProject && (
-          <div className="project-context">
-            <strong>{selectedProject.customer}</strong>
-            <span>{selectedProject.role}</span>
-            <p>{selectedProject.description}</p>
-            <div className="mini-tags">
-              {selectedProject.technologies.map((technology) => <span key={technology}>{technology}</span>)}
-            </div>
-          </div>
-        )}
-
-        <label>
-          Verifierad formulering att lägga till
-          <textarea
-            value={draft.statement}
-            onChange={(event) => onChange({ ...draft, statement: event.target.value })}
-            placeholder={`T.ex. Byggde ${draft.keyword} för dataintegration och kvalitetssäkrade flöden i projektet.`}
-          />
-        </label>
-
-        <label>
-          Referens i CV
-          <input
-            value={draft.reference}
-            onChange={(event) => onChange({ ...draft, reference: event.target.value })}
-            placeholder="Projekt eller profilsektion som ska bära formuleringen"
-          />
-        </label>
-
-        <div className="modal-actions">
-          <button type="button" onClick={onClose}>Avbryt</button>
-          <button className="primary" type="button" disabled={isBusy || !draft.statement.trim()} onClick={onSave}>
-            Spara i profil och CV-underlag
+          <button className="icon-button" onClick={onClose} aria-label="Close">
+            <X size={19} />
           </button>
-        </div>
+        </header>
+        {children}
       </section>
     </div>
   );
 }
 
 function App() {
-  const [language, setLanguage] = useState<UiLanguage>("en");
-  const [session, setSession] = useState<LoginResponse | null>(null);
-  const [loginEmail, setLoginEmail] = useState("manager@cvdatabase.local");
-  const [loginPassword, setLoginPassword] = useState("Manager123!");
-  const [loginError, setLoginError] = useState("");
-  const [query, setQuery] = useState("");
-  const [availability, setAvailability] = useState("");
-  const [candidates, setCandidates] = useState<CandidateProfile[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [jobAdvertisement, setJobAdvertisement] = useState("");
-  const [match, setMatch] = useState<JobMatchResponse | null>(null);
-  const [generatedCv, setGeneratedCv] = useState("");
-  const [isBusy, setIsBusy] = useState(false);
-  const [activeView, setActiveView] = useState<AppView>("dashboard");
-  const [applications, setApplications] = useState<ApplicationRecord[]>([]);
-  const [duplicateCheck, setDuplicateCheck] = useState<DuplicateCheckResponse | null>(null);
-  const [applicationCustomer, setApplicationCustomer] = useState("");
-  const [applicationRole, setApplicationRole] = useState("");
-  const [applicationCandidateIds, setApplicationCandidateIds] = useState<string[]>([]);
-  const [gapDecisions, setGapDecisions] = useState<Record<string, GapDecision>>({});
-  const [knowledgeDraft, setKnowledgeDraft] = useState<KnowledgeDraft | null>(null);
-  const [highlightedApplicationId, setHighlightedApplicationId] = useState<string | null>(null);
-  const [applicationStatusFilter, setApplicationStatusFilter] = useState("");
-  const [applicationConsultantFilter, setApplicationConsultantFilter] = useState("");
-  const [applicationDateFilter, setApplicationDateFilter] = useState("all");
-  const [openedApplication, setOpenedApplication] = useState<ApplicationRecord | null>(null);
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
-  const [openedCandidate, setOpenedCandidate] = useState<CandidateProfile | null>(null);
-  const [editingCandidate, setEditingCandidate] = useState<CandidateProfile | null>(null);
-  const [cvImportText, setCvImportText] = useState("");
-  const [profileCandidateId, setProfileCandidateId] = useState<string | null>(null);
-  const [assistantQuestion, setAssistantQuestion] = useState("Vem kan hjälpa mig med Microsoft Fabric och Power BI?");
-  const [assistantOpen, setAssistantOpen] = useState(false);
-  const [candidateColumnWidths, setCandidateColumnWidths] = useState(candidateColumnDefaults);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [assignmentContractFiles, setAssignmentContractFiles] = useState<Record<string, string>>({});
-  const copy = uiCopy[language];
-
+  const [workspace, setWorkspace] = useState<WorkspaceData | null>(null);
+  const [selectedOrganizationId, setSelectedOrganizationId] = useState("");
+  const [view, setView] = useState<View>("dashboard");
+  const [modal, setModal] = useState<Modal>(null);
+  const [selectedApplicationId, setSelectedApplicationId] = useState<
+    string | null
+  >(null);
+  const [jobFilter, setJobFilter] = useState("all");
+  const [candidateSearch, setCandidateSearch] = useState("");
+  const [loading, setLoading] = useState(hasSupabaseConfig);
+  const [demoMode, setDemoMode] = useState(false);
+  const [mobileNav, setMobileNav] = useState(false);
+  const [toast, setToast] = useState("");
   useEffect(() => {
-    if (!session) return;
-    const params = new URLSearchParams({ q: query, availability });
-    api<CandidateProfile[]>(`/api/candidates?${params}`).then(setCandidates).catch(console.error);
-  }, [query, availability, session]);
-
+    if (!hasSupabaseConfig) return;
+    let alive = true;
+    getSession()
+      .then(async (session) => {
+        if (session && alive) await authenticate(session.user.id);
+      })
+      .catch(() => undefined)
+      .finally(() => alive && setLoading(false));
+    const subscription = onAuthChange((session) => {
+      if (!session) setWorkspace(null);
+    });
+    return () => {
+      alive = false;
+      subscription.unsubscribe();
+    };
+  }, []);
   useEffect(() => {
-    if (!session) return;
-    loadApplications();
-  }, [session]);
-
-  const selected = useMemo(
-    () => candidates.find((candidate) => candidate.id === selectedId) ?? candidates[0],
-    [candidates, selectedId]
-  );
-
-  const profileCandidate = useMemo(
-    () => candidates.find((candidate) => candidate.id === profileCandidateId) ?? selected,
-    [candidates, profileCandidateId, selected]
-  );
-
-  const assignedCandidates = useMemo(
-    () => candidates.filter((candidate) => candidate.currentAssignment.trim().length > 0),
-    [candidates]
-  );
-
-  const candidateGridTemplate = useMemo(
-    () => `38px ${candidateColumnWidths.name}px ${candidateColumnWidths.email}px ${candidateColumnWidths.phone}px ${candidateColumnWidths.experience}px ${candidateColumnWidths.skills}px ${candidateColumnWidths.status}px ${candidateColumnWidths.updated}px`,
-    [candidateColumnWidths]
-  );
-
-  function startCandidateColumnResize(column: CandidateColumnKey, event: React.MouseEvent<HTMLButtonElement>) {
-    event.preventDefault();
-    event.stopPropagation();
-
-    const startX = event.clientX;
-    const startWidth = candidateColumnWidths[column];
-
-    function handleMouseMove(moveEvent: MouseEvent) {
-      const nextWidth = Math.max(candidateColumnMinWidths[column], startWidth + moveEvent.clientX - startX);
-      setCandidateColumnWidths((current) => ({ ...current, [column]: nextWidth }));
-    }
-
-    function handleMouseUp() {
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", handleMouseUp);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-    }
-
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-    document.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("mouseup", handleMouseUp);
-  }
-
-  const applicationCandidateOptions = useMemo(() => {
-    if (!match) {
-      return candidates.map((candidate) => ({ candidate, score: undefined as number | undefined }));
-    }
-
-    const ranked = match.candidates
-      .map((matchCandidate) => {
-        const candidate = candidates.find((item) => item.id === matchCandidate.candidateId);
-        return candidate ? { candidate, score: matchCandidate.score } : null;
-      })
-      .filter((item): item is { candidate: CandidateProfile; score: number } => item !== null);
-
-    const rest = candidates
-      .filter((candidate) => !ranked.some((item) => item.candidate.id === candidate.id))
-      .map((candidate) => ({ candidate, score: undefined as number | undefined }));
-
-    return [...ranked, ...rest];
-  }, [candidates, match]);
-
-  const applicationStatuses = useMemo(
-    () => [...new Set(applications.map((application) => application.status).filter(Boolean))],
-    [applications]
-  );
-
-  const applicationConsultants = useMemo(
-    () => [...new Set(applications.flatMap((application) => application.candidateNames).filter(Boolean))].sort(),
-    [applications]
-  );
-
-  const filteredApplications = useMemo(() => {
-    const now = Date.now();
-    const maxAgeDays = applicationDateFilter === "all" ? null : Number(applicationDateFilter);
-
-    return applications.filter((application) => {
-      const matchesStatus = !applicationStatusFilter || application.status === applicationStatusFilter;
-      const matchesConsultant = !applicationConsultantFilter || application.candidateNames.includes(applicationConsultantFilter);
-      const ageDays = (now - new Date(application.appliedAt).getTime()) / 86_400_000;
-      const matchesDate = maxAgeDays === null || ageDays <= maxAgeDays;
-      return matchesStatus && matchesConsultant && matchesDate;
-    });
-  }, [applications, applicationConsultantFilter, applicationDateFilter, applicationStatusFilter]);
-
-  const applicationStatusCounts = useMemo(
-    () => applicationStatuses.map((status) => ({
-      status,
-      count: applications.filter((application) => application.status === status).length
-    })),
-    [applications, applicationStatuses]
-  );
-
-  const profileApplications = useMemo(() => {
-    if (!profileCandidate) return [];
-    return applications.filter((application) =>
-      application.candidateIds.includes(profileCandidate.id)
-      || application.candidateNames.includes(profileCandidate.name));
-  }, [applications, profileCandidate]);
-
-  const assistantResults = useMemo(() => {
-    const terms = assistantQuestion
-      .toLowerCase()
-      .replace(/[^a-zåäö0-9#+.\s-]/gi, " ")
-      .split(/\s+/)
-      .filter((term) => term.length > 2);
-
-    return candidates
-      .map((candidate) => {
-        const evidence = [
-          ...candidate.skills,
-          candidate.title,
-          candidate.summary,
-          candidate.notes,
-          ...candidate.projects.flatMap((project) => [project.customer, project.role, project.description, ...project.technologies])
-        ];
-        const matchedTerms = [...new Set(terms.filter((term) => evidence.some((item) => item.toLowerCase().includes(term))))];
-        const skillHits = candidate.skills.filter((skill) => matchedTerms.some((term) => skill.toLowerCase().includes(term)));
-        return {
-          candidate,
-          score: matchedTerms.length * 18 + skillHits.length * 8 + (candidate.availability === "Tillgänglig" ? 8 : 0),
-          matchedTerms,
-          skillHits
-        };
-      })
-      .filter((item) => item.score > 0 || assistantQuestion.trim().length === 0)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 5);
-  }, [assistantQuestion, candidates]);
-
-  function openCandidatePage(candidate: CandidateProfile) {
-    setSelectedId(candidate.id);
-    setProfileCandidateId(candidate.id);
-    setOpenedCandidate(null);
-    setActiveView("candidate");
-  }
-
-  async function runMatch() {
-    setIsBusy(true);
+    if (!toast) return;
+    const timeout = window.setTimeout(() => setToast(""), 3200);
+    return () => window.clearTimeout(timeout);
+  }, [toast]);
+  async function authenticate(userId: string) {
+    setLoading(true);
     try {
-      const [result, duplicate] = await Promise.all([
-        api<JobMatchResponse>("/api/ai/match", {
-          method: "POST",
-          body: JSON.stringify({ jobAdvertisement, language: "sv", maxCandidates: 5 })
-        }),
-        api<DuplicateCheckResponse>("/api/applications/check-duplicate", {
-          method: "POST",
-          body: JSON.stringify({ advertisement: jobAdvertisement })
-        })
-      ]);
-      setMatch(result);
-      setGapDecisions({});
-      setDuplicateCheck(duplicate);
-      if (!applicationRole && result.analysis.role !== "Okänd roll") {
-        setApplicationRole(result.analysis.role);
-      }
-      if (!applicationCustomer) {
-        setApplicationCustomer(result.analysis.recruitingCompany || result.analysis.companyName || result.analysis.sourceName);
-      }
-      const recommendedIds = result.candidates
-        .filter((candidate) => candidate.score >= 50 && candidate.availability === "Tillgänglig")
-        .map((candidate) => candidate.candidateId);
-      setApplicationCandidateIds(recommendedIds.length > 0 ? recommendedIds : selected ? [selected.id] : []);
+      const next = await loadWorkspace(userId);
+      setWorkspace(next);
+      setSelectedOrganizationId(next.organizations[0]?.id ?? "");
+      setDemoMode(false);
     } finally {
-      setIsBusy(false);
+      setLoading(false);
     }
   }
-
-  async function loadApplications() {
-    const result = await api<ApplicationRecord[]>("/api/applications");
-    setApplications(result);
+  function enterDemo() {
+    const clone = structuredClone(demoWorkspace);
+    setWorkspace(clone);
+    setSelectedOrganizationId(clone.organizations[0].id);
+    setDemoMode(true);
   }
-
-  async function saveApplication() {
-    if (!jobAdvertisement) return;
-    const selectedCandidates = candidates.filter((candidate) => applicationCandidateIds.includes(candidate.id));
-    setIsBusy(true);
-    try {
-      await api<ApplicationRecord>("/api/applications", {
-        method: "POST",
-        body: JSON.stringify({
-          customer: applicationCustomer,
-          role: applicationRole || match?.analysis.role || "Okänd roll",
-          advertisement: jobAdvertisement,
-          candidateIds: selectedCandidates.map((candidate) => candidate.id),
-          candidateNames: selectedCandidates.map((candidate) => candidate.name),
-          sourceUrl: match?.analysis.sourceUrl || extractFirstUrl(jobAdvertisement),
-          status: "Ansökan skapad"
-        })
-      });
-      await loadApplications();
-      setActiveView("applications");
-    } finally {
-      setIsBusy(false);
-    }
+  async function exit() {
+    if (!demoMode && hasSupabaseConfig) await signOut();
+    setWorkspace(null);
+    setDemoMode(false);
   }
-
-  async function updateApplication(application: ApplicationRecord, status: string, feedback: string) {
-    const updated = await api<ApplicationRecord>(`/api/applications/${application.id}`, {
-      method: "PUT",
-      body: JSON.stringify({ status, feedback })
-    });
-    setApplications((current) => current.map((item) => item.id === updated.id ? updated : item));
-  }
-
-  function openApplication(applicationId: string) {
-    setActiveView("applications");
-    setHighlightedApplicationId(applicationId);
-    window.setTimeout(() => {
-      document.getElementById(`application-${applicationId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
-    }, 80);
-    window.setTimeout(() => setHighlightedApplicationId(null), 4200);
-  }
-
-  async function generateCv(language: "sv" | "en") {
-    if (!selected) return;
-    setIsBusy(true);
-    try {
-      const reviewContext = buildReviewContext(selected, gapDecisions);
-      const result = await api<{ markdown: string }>("/api/ai/generate-cv", {
-        method: "POST",
-        body: JSON.stringify({
-          candidateId: selected.id,
-          jobAdvertisement: reviewContext ? `${jobAdvertisement}\n\nInterna CV-granskningsnoteringar:\n${reviewContext}` : jobAdvertisement,
-          language
-        })
-      });
-      setGeneratedCv(result.markdown);
-    } finally {
-      setIsBusy(false);
-    }
-  }
-
-  function setGapDecision(candidateId: string, gap: string, decision: GapDecision) {
-    setGapDecisions((current) => ({
-      ...current,
-      [`${candidateId}:${extractGapKeyword(gap)}`]: decision
-    }));
-  }
-
-  function toggleApplicationCandidate(candidateId: string) {
-    setApplicationCandidateIds((current) =>
-      current.includes(candidateId)
-        ? current.filter((id) => id !== candidateId)
-        : [...current, candidateId]);
-  }
-
-  function openKnowledgeDraft(candidateId: string, gap: string, reference = "") {
-    const candidate = candidates.find((item) => item.id === candidateId);
-    const keyword = extractGapKeyword(gap);
-    if (!candidate) return;
-
-    const projectIndex = Math.max(0, candidate.projects.findIndex((project) => {
-      const projectText = `${project.customer} ${project.role} ${project.description} ${project.technologies.join(" ")}`;
-      return isLooseMatch(projectText, normalizeGapTerm(keyword)) || isLooseMatch(projectText, keyword);
-    }));
-    const project = candidate.projects[projectIndex];
-
-    setKnowledgeDraft({
-      candidateId,
-      gap,
-      keyword,
-      projectIndex,
-      reference: reference || (project ? `Projekt: ${project.customer} - ${project.role}` : "Profilnotering"),
-      statement: ""
-    });
-  }
-
-  function candidatePayload(candidate: CandidateProfile) {
-    return {
-      name: candidate.name,
-      title: candidate.title,
-      email: candidate.email,
-      phone: candidate.phone,
-      location: candidate.location,
-      availability: candidate.availability,
-      currentAssignment: candidate.currentAssignment,
-      availableFrom: candidate.availableFrom,
-      experienceYears: candidate.experienceYears,
-      avatarDataUrl: candidate.avatarDataUrl ?? "",
-      skills: candidate.skills,
-      languages: candidate.languages,
-      projects: candidate.projects,
-      summary: candidate.summary,
-      notes: candidate.notes
-    };
-  }
-
-  async function saveCandidateProfile(candidate: CandidateProfile) {
-    const updated = await api<CandidateProfile>(`/api/candidates/${candidate.id}`, {
-      method: "PUT",
-      body: JSON.stringify(candidatePayload(candidate))
-    });
-    setCandidates((current) => current.map((item) => item.id === updated.id ? updated : item));
-    setOpenedCandidate((current) => current?.id === updated.id ? updated : current);
-    setEditingCandidate((current) => current?.id === updated.id ? updated : current);
-    return updated;
-  }
-
-  async function saveKnowledgeDraft() {
-    if (!knowledgeDraft) return;
-    const candidate = candidates.find((item) => item.id === knowledgeDraft.candidateId);
-    if (!candidate) return;
-    const project = candidate.projects[knowledgeDraft.projectIndex];
-    const statement = knowledgeDraft.statement.trim();
-    if (!statement) return;
-
-    setIsBusy(true);
-    try {
-      const updatedProjects = candidate.projects.map((item, index) => {
-        if (index !== knowledgeDraft.projectIndex) return item;
-        const suffix = item.description.endsWith(".") ? "" : ".";
-        return {
-          ...item,
-          description: `${item.description}${suffix} ${statement}`
-        };
-      });
-      const knowledgeNote = `[Kunskapsbas] ${knowledgeDraft.keyword}: ${statement} (${knowledgeDraft.reference})`;
-      const updated = await saveCandidateProfile({
-        ...candidate,
-        projects: updatedProjects,
-        notes: [candidate.notes, knowledgeNote].filter(Boolean).join("\n")
-      });
-
-      setGapDecision(candidate.id, knowledgeDraft.gap, {
-        status: "linked",
-        reference: knowledgeDraft.reference || (project ? `Projekt: ${project.customer} - ${project.role}` : "Profilnotering"),
-        comment: statement
-      });
-      setKnowledgeDraft(null);
-    } finally {
-      setIsBusy(false);
-    }
-  }
-
-  function findProfileReferences(candidateId: string, gap: string) {
-    const candidate = candidates.find((item) => item.id === candidateId);
-    if (!candidate) return [];
-    const keyword = extractGapKeyword(gap);
-    const terms = [keyword, normalizeGapTerm(keyword)].filter(Boolean);
-    const refs: string[] = [];
-
-    for (const skill of candidate.skills) {
-      if (terms.some((term) => isLooseMatch(skill, term))) {
-        refs.push(`Kompetens: ${skill}`);
-      }
-    }
-
-    for (const project of candidate.projects) {
-      const projectText = `${project.customer} ${project.role} ${project.description} ${project.technologies.join(" ")}`;
-      if (terms.some((term) => isLooseMatch(projectText, term))) {
-        refs.push(`Projekt: ${project.customer} - ${project.role}`);
-      }
-    }
-
-    return [...new Set(refs)].slice(0, 4);
-  }
-
-  async function downloadBlob(response: Response, fallbackName: string) {
-    if (!response.ok) {
-      throw new Error(await response.text());
-    }
-
-    const blob = await response.blob();
-    const filename = fallbackName || filenameFromDisposition(response.headers.get("Content-Disposition")) || "cv.pdf";
-    const url = URL.createObjectURL(new Blob([blob], { type: "application/pdf" }));
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = filename.endsWith(".pdf") ? filename : `${filename}.pdf`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }
-
-  async function downloadPdf(candidate = selected, language: "sv" | "en" = "sv") {
-    if (!candidate) return;
-    const token = localStorage.getItem(tokenStorageKey);
-    const response = await fetch(apiUrl(`/api/candidates/${candidate.id}/cv.pdf?language=${language}`), {
-      headers: token ? { Authorization: `Bearer ${token}` } : {}
-    });
-    await downloadBlob(response, `${fileSafeName(candidate.name)}-cv-${language}.pdf`);
-  }
-
-  async function downloadTailoredPdf(candidate = selected, language: "sv" | "en" = "sv") {
-    if (!candidate) return;
-    setIsBusy(true);
-    try {
-      const reviewContext = buildReviewContext(candidate, gapDecisions);
-      const response = await fetch(apiUrl("/api/ai/generate-cv.pdf"), {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(localStorage.getItem(tokenStorageKey) ? { Authorization: `Bearer ${localStorage.getItem(tokenStorageKey)}` } : {})
-        },
-        body: JSON.stringify({
-          candidateId: candidate.id,
-          jobAdvertisement: reviewContext ? `${jobAdvertisement}\n\nInterna CV-granskningsnoteringar:\n${reviewContext}` : jobAdvertisement,
-          language
-        })
-      });
-      await downloadBlob(response, `${fileSafeName(candidate.name)}-anpassat-cv-${language}.pdf`);
-    } finally {
-      setIsBusy(false);
-    }
-  }
-
-  function updateEditingProject(index: number, update: Partial<ProjectExperience>) {
-    setEditingCandidate((current) => {
-      if (!current) return current;
-      return {
-        ...current,
-        projects: current.projects.map((project, projectIndex) => projectIndex === index ? { ...project, ...update } : project)
-      };
-    });
-  }
-
-  function updateEditingSkill(index: number, name: string) {
-    setEditingCandidate((current) => {
-      if (!current) return current;
-      return {
-        ...current,
-        skills: current.skills.map((skill, skillIndex) => skillIndex === index ? name : skill).filter(Boolean)
-      };
-    });
-  }
-
-  function updateEditingSkillDetail(skill: string, update: Partial<SkillDetail>) {
-    setEditingCandidate((current) => {
-      if (!current) return current;
-      const existingDetails = extractSkillDetails(current.notes);
-      const currentDetail = existingDetails[skill.toLowerCase()] ?? getSkillDetail(skill, current);
-      const nextDetail: SkillDetail = {
-        ...currentDetail,
-        ...update,
-        name: update.name ?? currentDetail.name
-      };
-      const nextDetails = current.skills.map((item) =>
-        item.toLowerCase() === skill.toLowerCase()
-          ? nextDetail
-          : existingDetails[item.toLowerCase()] ?? getSkillDetail(item, current));
-      return {
-        ...current,
-        notes: [notesWithoutSkillDetails(current.notes), buildSkillDetailsNote(nextDetails)].filter(Boolean).join("\n")
-      };
-    });
-  }
-
-  function addEditingSkill() {
-    setEditingCandidate((current) => current ? { ...current, skills: [...current.skills, "Ny kompetens"] } : current);
-  }
-
-  function removeEditingSkill(index: number) {
-    setEditingCandidate((current) => current ? { ...current, skills: current.skills.filter((_, skillIndex) => skillIndex !== index) } : current);
-  }
-
-  function readProfileImage(file: File, candidate: CandidateProfile) {
-    if (!file.type.startsWith("image/")) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      setEditingCandidate({ ...candidate, avatarDataUrl: String(reader.result) });
-    };
-    reader.readAsDataURL(file);
-  }
-
-  function importCvFile(file: File) {
-    const reader = new FileReader();
-    reader.onload = () => {
-      setCvImportText(String(reader.result ?? "").slice(0, 5000));
-    };
-    reader.readAsText(file);
-  }
-
-  function applyCvImport() {
-    if (!editingCandidate || !cvImportText.trim()) return;
-    const imported = cvImportText.toLowerCase();
-    const knownTerms = [
-      "SQL", "Power BI", "Python", "Azure", "Azure Fabric", "Data Warehouse", "ETL", "CRM", "ERP",
-      "React", "TypeScript", ".NET", "C#", "API", "Snowflake", "Fivetran", "Kravinsamling",
-      "Datamodellering", "Datavisualisering", "Machine Learning", "AI"
-    ];
-    const importedSkills = knownTerms.filter((term) => imported.includes(term.toLowerCase()));
-    const nextSummary = cvImportText
-      .split(/\n+/)
-      .map((line) => line.trim())
-      .find((line) => line.length > 80 && line.length < 420) ?? editingCandidate.summary;
-
-    setEditingCandidate({
-      ...editingCandidate,
-      summary: nextSummary,
-      skills: [...new Set([...editingCandidate.skills, ...importedSkills])],
-      notes: [editingCandidate.notes, `[CV-import] ${new Date().toLocaleDateString("sv-SE")}: ${fileSafeName("importerat-cv")} analyserades i profilen.`].filter(Boolean).join("\n")
-    });
-  }
-
-  async function login(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setLoginError("");
-    try {
-      const result = await api<LoginResponse>("/api/auth/login", {
-        method: "POST",
-        body: JSON.stringify({ email: loginEmail, password: loginPassword })
-      });
-      localStorage.setItem(tokenStorageKey, result.accessToken);
-      setSession(result);
-    } catch {
-      setLoginError("Fel e-post eller lösenord.");
-    }
-  }
-
-  function logout() {
-    localStorage.removeItem(tokenStorageKey);
-    setSession(null);
-    setCandidates([]);
-    setMatch(null);
-    setGeneratedCv("");
-  }
-
-  if (!session) {
+  if (loading)
     return (
-      <main className="login-screen">
-        <header className="login-page-header">
-          <strong>InsideGrid</strong>
-          <div>
-            <label className="language-select">
-              <Languages size={15} />
-              <select value={language} onChange={(event) => setLanguage(event.target.value as UiLanguage)}>
-                <option value="en">EN</option>
-                <option value="sv">SV</option>
-              </select>
-            </label>
-          </div>
-        </header>
-
-        <div className="login-shell">
-          <form className="login-panel" onSubmit={login}>
-            <div className="login-form-heading">
-              <h2>{language === "en" ? "Sign in to your account" : "Logga in på ditt konto"}</h2>
-              <p>{language === "en" ? "Continue to your consultant workspace." : "Fortsätt till din konsultvy."}</p>
-            </div>
-
-            <label>
-              {copy.email}
-              <input value={loginEmail} onChange={(event) => setLoginEmail(event.target.value)} type="email" />
-            </label>
-            <label>
-              {copy.password}
-              <input value={loginPassword} onChange={(event) => setLoginPassword(event.target.value)} type="password" />
-            </label>
-            {loginError && <p className="error-text">{loginError}</p>}
-            <button className="primary" type="submit">{copy.signIn}</button>
-            <div className="login-divider">
-              <span />
-              <em>or</em>
-              <span />
-            </div>
-            <div className="social-login-row" aria-label="External sign in options">
-              <button type="button">
-                <Apple size={18} />
-                Apple
-              </button>
-              <button type="button">
-                <Chrome size={18} />
-                Google
-              </button>
-            </div>
-            <div className="login-signup-prompt">
-              <span>{language === "en" ? "Don't have an account?" : "Har du inget konto?"}</span>
-              <button type="button">{language === "en" ? "Sign up" : "Skapa konto"}</button>
-            </div>
-          </form>
-
-          <section className="login-visual" aria-label="InsideGrid video preview">
-            <video src="/login-video.mp4" autoPlay muted loop playsInline poster="/login.avif" />
-            <div className="login-copy">
-              <h1>{copy.loginTitle}</h1>
-              <div className="login-proof-grid">
-                <span><ShieldCheck size={17} />{copy.verifiedData}</span>
-                <span><Sparkles size={17} />{copy.tailoredCv}</span>
-                <span><ClipboardList size={17} />{copy.applicationTracking}</span>
-              </div>
-            </div>
-          </section>
-        </div>
-
-        <footer className="login-page-footer">
-          <span>© 2026 InsideGrid</span>
-          <div>
-            <button type="button">{language === "en" ? "Terms & Conditions" : "Villkor"}</button>
-            <button type="button">{language === "en" ? "Privacy Policy" : "Integritetspolicy"}</button>
-          </div>
-        </footer>
-      </main>
+      <div className="app-loader">
+        <span className="brand-mark">
+          <Grid2X2 size={20} />
+        </span>
+        <LoaderCircle className="spin" /> Loading your workspace…
+      </div>
+    );
+  if (!workspace)
+    return <Login onDemo={enterDemo} onAuthenticated={authenticate} />;
+  const currentWorkspace = workspace;
+  const isAdmin = currentWorkspace.profile.platform_role === "platform_admin";
+  const organization =
+    currentWorkspace.organizations.find(
+      (item) => item.id === selectedOrganizationId,
+    ) ?? currentWorkspace.organizations[0];
+  if (!organization)
+    return (
+      <EmptyWorkspace profileName={workspace.profile.full_name} onExit={exit} />
+    );
+  const jobs = workspace.jobs.filter(
+    (item) => item.organization_id === organization.id,
+  );
+  const candidates = workspace.candidates.filter(
+    (item) => item.organization_id === organization.id,
+  );
+  const applications = workspace.applications.filter(
+    (item) => item.organization_id === organization.id,
+  );
+  const selectedApplication = workspace.applications.find(
+    (item) => item.id === selectedApplicationId,
+  );
+  const selectedCandidate = selectedApplication
+    ? workspace.candidates.find(
+        (item) => item.id === selectedApplication.candidate_id,
+      )
+    : undefined;
+  const selectedJob = selectedApplication
+    ? workspace.jobs.find((item) => item.id === selectedApplication.job_id)
+    : undefined;
+  const selectedEvaluation = selectedApplication
+    ? workspace.evaluations.find(
+        (item) => item.application_id === selectedApplication.id,
+      )
+    : undefined;
+  function update<K extends keyof WorkspaceData>(
+    key: K,
+    value: WorkspaceData[K],
+  ) {
+    setWorkspace((current) =>
+      current ? { ...current, [key]: value } : current,
     );
   }
-
+  async function moveApplication(
+    application: Application,
+    stage: ApplicationStage,
+  ) {
+    const previous = currentWorkspace.applications;
+    const optimistic = previous.map((item) =>
+      item.id === application.id
+        ? { ...item, stage, stage_changed_at: new Date().toISOString() }
+        : item,
+    );
+    update("applications", optimistic);
+    try {
+      if (!demoMode) {
+        const saved = await updateApplicationStage(application.id, stage);
+        update(
+          "applications",
+          optimistic.map((item) => (item.id === saved.id ? saved : item)),
+        );
+      }
+      setToast(
+        `Candidate moved to ${stage === "hired" && organization.workspace_mode === "consulting" ? "placed" : stage}.`,
+      );
+    } catch (reason) {
+      update("applications", previous);
+      setToast(
+        reason instanceof Error
+          ? reason.message
+          : "The stage could not be updated.",
+      );
+    }
+  }
+  async function runEvaluation(application: Application) {
+    try {
+      let evaluation: AiEvaluation;
+      if (demoMode) {
+        const candidate = currentWorkspace.candidates.find(
+          (item) => item.id === application.candidate_id,
+        )!;
+        const job = currentWorkspace.jobs.find(
+          (item) => item.id === application.job_id,
+        )!;
+        evaluation = {
+          id: crypto.randomUUID(),
+          application_id: application.id,
+          summary: `${candidate.full_name} shows relevant evidence for ${job.title}. Review the stated gaps before deciding on the next stage.`,
+          strengths: candidate.skills
+            .slice(0, 2)
+            .map((skill) => `${skill} is explicitly supported by the profile.`),
+          gaps: [
+            "The profile does not confirm the scale or recency of every required skill.",
+          ],
+          follow_up_questions: [
+            "Which recent project best demonstrates the most important requirement?",
+          ],
+          created_at: new Date().toISOString(),
+        };
+      } else evaluation = await requestAiEvaluation(application.id);
+      update("evaluations", [
+        evaluation,
+        ...currentWorkspace.evaluations.filter(
+          (item) => item.application_id !== application.id,
+        ),
+      ]);
+      setToast("AI insights are ready for human review.");
+    } catch (reason) {
+      setToast(
+        reason instanceof Error
+          ? reason.message
+          : "AI insights could not be created.",
+      );
+    }
+  }
   return (
-    <main className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
-      <header className="toolbar">
-        <div className="app-header-brand">
-          <strong>InsideGrid</strong>
-        </div>
-        <label className="toolbar-search">
-          <Search size={16} />
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={copy.searchPlaceholder} />
-        </label>
-        <div className="toolbar-actions">
-          <label className="language-select">
-            <Languages size={15} />
-            <select value={language} onChange={(event) => setLanguage(event.target.value as UiLanguage)}>
-              <option value="en">EN</option>
-              <option value="sv">SV</option>
-            </select>
-          </label>
-          <button className="topbar-icon" title="Notiser" type="button">
-            <Bell size={19} />
+    <div className="app-shell">
+      <aside className={`sidebar ${mobileNav ? "open" : ""}`}>
+        <div className="sidebar-top">
+          <button className="brand bare" onClick={() => setView("dashboard")}>
+            <span className="brand-mark">
+              <Grid2X2 size={18} />
+            </span>
+            <span>InsideGrid</span>
           </button>
-          <div className="user-menu-wrap">
-            <button className="avatar-button" type="button" onClick={() => setUserMenuOpen((current) => !current)}>
-              <span>{initials(session.user.displayName)}</span>
-            </button>
-            {userMenuOpen && (
-              <div className="user-menu">
-                <div className="user-menu-header">
-                  <span>{initials(session.user.displayName)}</span>
-                  <div>
-                    <strong>{session.user.displayName}</strong>
-                    <small>{session.user.email} · {session.user.role}</small>
-                  </div>
-                </div>
-                <button type="button" onClick={() => {
-                  setProfileOpen(true);
-                  setUserMenuOpen(false);
-                }}>
-                  <UserRound size={16} />
-                  Mina sidor
-                </button>
-                <button type="button">
-                  <Settings size={16} />
-                  Profilinställningar
-                </button>
-                <button type="button" onClick={logout}>
-                  <LogOut size={16} />
-                  Logga ut
-                </button>
-              </div>
-            )}
-          </div>
+          <button className="mobile-close" onClick={() => setMobileNav(false)}>
+            <X />
+          </button>
         </div>
-      </header>
-
-      <aside className={`sidebar ${sidebarCollapsed ? "collapsed" : ""}`}>
-        <button className="sidebar-toggle" type="button" onClick={() => setSidebarCollapsed((current) => !current)}>
-          <span>{sidebarCollapsed ? "›" : "‹"}</span>
-          <em>{sidebarCollapsed ? copy.openMenu : copy.closeMenu}</em>
-        </button>
-        <div className={`nav-item ${activeView === "dashboard" ? "active" : ""}`} title={copy.dashboard} onClick={() => setActiveView("dashboard")}>
-          <LayoutDashboard size={18} />
-          <span>{copy.dashboard}</span>
-        </div>
-        <div className={`nav-item ${activeView === "candidates" ? "active" : ""}`} title={copy.candidates} onClick={() => setActiveView("candidates")}>
-          <UsersRound size={18} />
-          <span>{copy.candidates}</span>
-        </div>
-        <div className={`nav-item ${activeView === "applications" ? "active" : ""}`} title={copy.applications} onClick={() => setActiveView("applications")}>
-          <ClipboardList size={18} />
-          <span>{copy.applications}</span>
-        </div>
-        <div className={`nav-item ${activeView === "assignments" ? "active" : ""}`} title={copy.assignments} onClick={() => setActiveView("assignments")}>
-          <BriefcaseBusiness size={18} />
-          <span>{copy.assignments}</span>
-        </div>
-        <div className={`nav-item ${activeView === "matchAssignment" ? "active" : ""}`} title={copy.matchAssignment} onClick={() => setActiveView("matchAssignment")}>
-          <Sparkles size={18} />
-          <span>{copy.matchAssignment}</span>
-        </div>
-        <div className={`nav-item ${activeView === "settings" ? "active" : ""}`} title={copy.settings} onClick={() => setActiveView("settings")}>
-          <UserRoundCog size={18} />
-          <span>{copy.settings}</span>
-        </div>
-        <button className="security-note" type="button" title="Rollstyrd åtkomst är aktiv i API:t. Byt demo-auth mot Entra ID/JWT i produktion.">
-          <Settings size={17} />
-        </button>
-      </aside>
-
-      <section className="workspace">
-        {activeView === "dashboard" ? (
-          <section className="candidate-directory-page">
-            <section className="candidate-directory-shell">
-              <div className="candidate-directory-main">
-                <div className="candidate-directory-topline">
-                  <div>
-                    <span>{copy.dashboard}</span>
-                    <strong>{copy.dashboard}</strong>
-                  </div>
-                </div>
-                <section className="manager-dashboard">
-              <div className="manager-metrics home-kpis">
-                <article className="kpi-card candidates">
-                  <UsersRound size={18} />
-                  <span>{copy.consultants}</span>
-                  <strong>{candidates.length} {copy.active}</strong>
-                  <small>{candidates.filter((candidate) => new Date(candidate.updatedAt).getTime() > Date.now() - 30 * 24 * 60 * 60 * 1000).length} {copy.updatedLast30Days}</small>
-                </article>
-                <article className="kpi-card assignments">
-                  <BriefcaseBusiness size={18} />
-                  <span>{copy.assignmentsKpi}</span>
-                  <strong>{applications.filter((application) => ["Ansökan skapad", "CV skickat", "Intervju"].includes(application.status)).length} {copy.active}</strong>
-                  <small>{applications.filter((application) => application.status === "Utkast").length || (jobAdvertisement && !match ? 1 : 0)} {copy.needsMatching}</small>
-                </article>
-                <article className="kpi-card applications">
-                  <ClipboardList size={18} />
-                  <span>{copy.applications}</span>
-                  <strong>{applications.filter((application) => ["Ansökan skapad", "CV skickat", "Intervju", "Återkoppling"].includes(application.status)).length} {copy.ongoing}</strong>
-                  <small>{applications.filter((application) => application.status === "CV skickat").length} {copy.waitingForFeedback}</small>
-                </article>
-                <article className="kpi-card ai">
-                  <Sparkles size={18} />
-                  <span>{copy.aiMatches}</span>
-                  <strong>{match ? match.candidates.length : 0} {copy.created}</strong>
-                  <small>{match ? match.candidates.filter((candidate) => candidate.score >= 70).length : 0} {copy.readyForReview}</small>
-                </article>
-              </div>
-
-              <div className="manager-panels">
-                <section>
-                  <div className="section-heading">
-                    <strong>{copy.nextSteps}</strong>
-                    <span>{copy.priority}</span>
-                  </div>
-                  <div className="manager-task-list">
-                    <button type="button" onClick={() => setActiveView("matchAssignment")}>
-                      <strong>{copy.matchNewAd}</strong>
-                      <span>{copy.matchNewAdText}</span>
-                    </button>
-                    <button type="button" onClick={() => setActiveView("applications")}>
-                      <strong>{copy.followUpApplications}</strong>
-                      <span>{applications.filter((application) => application.status === "CV skickat").length} {copy.followUpApplicationsText}</span>
-                    </button>
-                    <button type="button" onClick={() => setActiveView("candidates")}>
-                      <strong>{copy.reviewProfiles}</strong>
-                      <span>{copy.reviewProfilesText}</span>
-                    </button>
-                  </div>
-                </section>
-                <section>
-                  <div className="section-heading">
-                    <strong>{copy.latestApplications}</strong>
-                    <span>{applications.length}</span>
-                  </div>
-                  <div className="manager-application-list">
-                    {applications.slice(0, 4).map((application) => (
-                      <button type="button" key={application.id} onClick={() => openApplication(application.id)}>
-                        <strong>{application.customer}</strong>
-                        <span>{application.role} · {application.status}</span>
-                      </button>
-                    ))}
-                    {applications.length === 0 && <p>{copy.noApplicationsSaved}</p>}
-                  </div>
-                </section>
-              </div>
-                </section>
-              </div>
-            </section>
-          </section>
-        ) : activeView === "candidates" ? (
-          <section className="candidate-directory-page">
-            <section className="candidate-directory-shell">
-              <div className="candidate-directory-main">
-                <div className="candidate-directory-topline">
-                  <div>
-                    <span>{copy.dashboard}</span>
-                    <strong>{copy.candidates}</strong>
-                  </div>
-                  <div className="candidate-directory-actions">
-                    <button type="button">{copy.defaultView}</button>
-                    <button type="button">{copy.viewSettings}</button>
-                    <button type="button">{copy.importExport}</button>
-                    <button className="primary" type="button" onClick={() => selected && setEditingCandidate(selected)}>
-                      + {copy.addCandidate}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="candidate-directory-filters">
-                  <label>
-                    <Search size={15} />
-                    <input
-                      value={query}
-                      onChange={(event) => setQuery(event.target.value)}
-                      placeholder={copy.searchCandidatesPlaceholder}
-                    />
-                  </label>
-                  <button type="button">{copy.sortedByLastActivity}</button>
-                  <button type="button">{copy.filters}</button>
-                </div>
-
-                <div className="candidate-directory-table" role="table" aria-label={copy.candidates}>
-                  <div className="candidate-directory-row head" role="row" style={{ gridTemplateColumns: candidateGridTemplate }}>
-                    <span><input type="checkbox" aria-label="Select all candidates" /></span>
-                    <span>{copy.name}<button className="column-resize-handle" type="button" aria-label={`${copy.resizeColumn}: ${copy.name}`} onMouseDown={(event) => startCandidateColumnResize("name", event)} /></span>
-                    <span>{copy.personalEmail}<button className="column-resize-handle" type="button" aria-label={`${copy.resizeColumn}: ${copy.personalEmail}`} onMouseDown={(event) => startCandidateColumnResize("email", event)} /></span>
-                    <span>{copy.personalPhone}<button className="column-resize-handle" type="button" aria-label={`${copy.resizeColumn}: ${copy.personalPhone}`} onMouseDown={(event) => startCandidateColumnResize("phone", event)} /></span>
-                    <span>{copy.experience}<button className="column-resize-handle" type="button" aria-label={`${copy.resizeColumn}: ${copy.experience}`} onMouseDown={(event) => startCandidateColumnResize("experience", event)} /></span>
-                    <span>{copy.skills}<button className="column-resize-handle" type="button" aria-label={`${copy.resizeColumn}: ${copy.skills}`} onMouseDown={(event) => startCandidateColumnResize("skills", event)} /></span>
-                    <span>{copy.status}<button className="column-resize-handle" type="button" aria-label={`${copy.resizeColumn}: ${copy.status}`} onMouseDown={(event) => startCandidateColumnResize("status", event)} /></span>
-                    <span>{copy.lastUpdated}<button className="column-resize-handle" type="button" aria-label={`${copy.resizeColumn}: ${copy.lastUpdated}`} onMouseDown={(event) => startCandidateColumnResize("updated", event)} /></span>
-                  </div>
-                  {candidates.map((candidate, index) => (
-                    <button
-                      className={`candidate-directory-row ${candidate.id === selected?.id ? "selected" : ""}`}
-                      type="button"
-                      role="row"
-                      key={candidate.id}
-                      style={{ gridTemplateColumns: candidateGridTemplate }}
-                      onClick={() => {
-                        setSelectedId(candidate.id);
-                        setOpenedCandidate(candidate);
-                      }}
-                    >
-                      <span><input type="checkbox" aria-label={`Select ${candidate.name}`} onClick={(event) => event.stopPropagation()} /></span>
-                      <span className="directory-person">
-                        <span className="candidate-avatar small">
-                          {candidate.avatarDataUrl ? <img src={candidate.avatarDataUrl} alt="" /> : initials(candidate.name)}
-                        </span>
-                        <strong>{candidate.name}</strong>
-                        <em>{index % 2 === 0 ? "in" : ""}</em>
-                      </span>
-                      <span><em>{candidate.email}</em></span>
-                      <span><em>{candidate.phone}</em></span>
-                      <span>{candidate.title} ({candidate.experienceYears} {copy.yearsShort})</span>
-                      <span className="directory-skills">
-                        {candidate.skills.slice(0, 3).map((skill) => <b key={skill}>{skill}</b>)}
-                        {candidate.skills.length > 3 && <small>+{candidate.skills.length - 3}</small>}
-                      </span>
-                      <span>
-                        <i className={candidate.availability === "Tillgänglig" ? "status-free" : "status-busy"}>
-                          {candidate.availability === "Tillgänglig" ? copy.available : copy.busy}
-                        </i>
-                      </span>
-                      <span>{new Date(candidate.updatedAt).toLocaleDateString("sv-SE")}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </section>
-          </section>
-        ) : activeView === "assignments" ? (
-          <section className="candidate-directory-page">
-            <section className="candidate-directory-shell">
-              <div className="candidate-directory-main">
-                <div className="candidate-directory-topline">
-                  <div>
-                    <span>{copy.dashboard}</span>
-                    <strong>{copy.assignmentDatabase}</strong>
-                  </div>
-                  <div className="candidate-directory-actions">
-                    <button type="button">{copy.defaultView}</button>
-                    <button type="button">{copy.viewSettings}</button>
-                    <button type="button">{copy.importExport}</button>
-                    <button className="primary" type="button" onClick={() => setActiveView("matchAssignment")}>
-                      + {copy.matchAssignment}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="candidate-directory-filters">
-                  <label>
-                    <Search size={15} />
-                    <input
-                      value={query}
-                      onChange={(event) => setQuery(event.target.value)}
-                      placeholder={copy.searchAssignmentsPlaceholder}
-                    />
-                  </label>
-                  <button type="button">{copy.sortedByLastActivity}</button>
-                  <button type="button">{copy.filters}</button>
-                </div>
-
-                <div className="candidate-directory-table" role="table" aria-label={copy.assignments}>
-                  <div className="candidate-directory-row assignment-directory-row head" role="row">
-                    <span><input type="checkbox" aria-label="Select all assignments" /></span>
-                    <span>{copy.employee}</span>
-                    <span>{copy.currentAssignment}</span>
-                    <span>{copy.customer}</span>
-                    <span>{copy.status}</span>
-                    <span>{copy.contractPeriod}</span>
-                    <span>{copy.contractPdf}</span>
-                    <span>{copy.updatedAt}</span>
-                  </div>
-                  {assignedCandidates.map((candidate) => {
-                    const currentProject = candidate.projects[0];
-                    const contractFile = assignmentContractFiles[candidate.id];
-                    return (
-                    <button
-                      className="candidate-directory-row assignment-directory-row"
-                      type="button"
-                      role="row"
-                      key={candidate.id}
-                      onClick={() => openCandidatePage(candidate)}
-                    >
-                      <span><input type="checkbox" aria-label={`Select ${candidate.name}`} onClick={(event) => event.stopPropagation()} /></span>
-                      <span className="directory-person">
-                        <span className="candidate-avatar small">
-                          {candidate.avatarDataUrl ? <img src={candidate.avatarDataUrl} alt="" /> : initials(candidate.name)}
-                        </span>
-                        <strong>{candidate.name}</strong>
-                      </span>
-                      <span>{candidate.currentAssignment || copy.noAssignment}</span>
-                      <span>{currentProject?.customer ?? candidate.location}</span>
-                      <span>
-                        <i className="status-active">{copy.activeAssignment}</i>
-                      </span>
-                      <span>{currentProject ? projectPeriod(currentProject) : `${copy.available} ${candidate.availableFrom ?? ""}`}</span>
-                      <span className="contract-cell" onClick={(event) => event.stopPropagation()}>
-                        <em>{contractFile ?? copy.missingContract}</em>
-                        <label>
-                          {copy.uploadPdf}
-                          <input
-                            type="file"
-                            accept="application/pdf"
-                            onChange={(event) => {
-                              const file = event.target.files?.[0];
-                              if (file) {
-                                setAssignmentContractFiles((current) => ({ ...current, [candidate.id]: file.name }));
-                              }
-                            }}
-                          />
-                        </label>
-                      </span>
-                      <span>{new Date(candidate.updatedAt).toLocaleDateString("sv-SE")}</span>
-                    </button>
-                    );
-                  })}
-                  {assignedCandidates.length === 0 && (
-                    <div className="empty-state">{copy.noActiveAssignments}</div>
-                  )}
-                </div>
-              </div>
-            </section>
-          </section>
-        ) : activeView === "matchAssignment" ? (
-          <section className="candidate-directory-page">
-            <section className="candidate-directory-shell">
-              <div className="candidate-directory-main">
-                <div className="candidate-directory-topline">
-                  <div>
-                    <span>{copy.dashboard}</span>
-                    <strong>{copy.matchAssignment}</strong>
-                  </div>
-                </div>
-                <section className="main-grid workspace-canvas ai-only-canvas">
-              <div className="ai-panel">
-                <div className="panel-title">
-                  <Sparkles size={20} />
-                  <h2>AI-matcha annons</h2>
-                </div>
-                <div className="ai-action-strip">
-                  <button type="button" onClick={() => document.querySelector<HTMLTextAreaElement>(".ai-panel textarea")?.focus()}>
-                    Klistra annons
-                  </button>
-                  <button type="button" disabled={!jobAdvertisement || isBusy} onClick={runMatch}>
-                    Skapa shortlist
-                  </button>
-                  <button type="button" disabled={!selected || !jobAdvertisement || isBusy} onClick={() => downloadTailoredPdf(selected, "sv")}>
-                    Anpassa CV
-                  </button>
-                </div>
-                <textarea
-                  value={jobAdvertisement}
-                  onChange={(event) => {
-                    setJobAdvertisement(event.target.value);
-                    setDuplicateCheck(null);
-                  }}
-                  placeholder="Klistra in en uppdragsannons eller länk här..."
-                />
-                {extractFirstUrl(jobAdvertisement) && (
-                  <div className="link-detected">
-                    Länk upptäckt. InsideGrid använder sökord och plats från länken direkt. Klistra även in annonstexten om du vill fånga exakt kundnamn och krav.
-                  </div>
-                )}
-                <div className="application-capture">
-                  <label>
-                    Kund
-                    <input value={applicationCustomer} onChange={(event) => setApplicationCustomer(event.target.value)} placeholder="T.ex. kundnamn eller bolag" />
-                  </label>
-                  <label>
-                    Roll
-                    <input value={applicationRole} onChange={(event) => setApplicationRole(event.target.value)} placeholder="Fylls efter matchning om möjligt" />
-                  </label>
-                </div>
-                <div className="consultant-picker">
-                  <div>
-                    <strong>Konsulter i ansökan</strong>
-                    <span>Välj en eller flera som ska sparas på ansökan.</span>
-                  </div>
-                  <div className="consultant-options">
-                    {applicationCandidateOptions.map(({ candidate, score }) => (
-                      <label className="consultant-option" key={candidate.id}>
-                        <input
-                          type="checkbox"
-                          checked={applicationCandidateIds.includes(candidate.id)}
-                          onChange={() => toggleApplicationCandidate(candidate.id)}
-                        />
-                        <span>
-                          <strong>{candidate.name}</strong>
-                          <small>{candidate.title} · {candidate.availability}{score !== undefined ? ` · ${score}/100` : ""}</small>
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-                <div className="button-row">
-                  <button className="primary" disabled={!jobAdvertisement || isBusy} onClick={runMatch}>
-                    Matcha
-                  </button>
-                  <button disabled={!jobAdvertisement || isBusy} onClick={saveApplication}>
-                    <Save size={16} />
-                    Spara ansökan
-                  </button>
-                  <button disabled={!selected || !jobAdvertisement || isBusy} onClick={() => downloadTailoredPdf(selected, "sv")}>CV svenska PDF</button>
-                  <button disabled={!selected || !jobAdvertisement || isBusy} onClick={() => downloadTailoredPdf(selected, "en")}>CV engelska PDF</button>
-                </div>
-                {selected && Object.keys(gapDecisions).some((key) => key.startsWith(`${selected.id}:`)) && (
-                  <div className="review-context">
-                    <strong>Granskningsval till nästa CV</strong>
-                    <pre>{buildReviewContext(selected, gapDecisions)}</pre>
-                  </div>
-                )}
-
-                {duplicateCheck && duplicateCheck.matches.length > 0 && (
-                  <div className={`duplicate-alert ${duplicateCheck.isLikelyDuplicate ? "high" : ""}`}>
-                    <AlertTriangle size={18} />
-                    <div>
-                      <strong>{duplicateCheck.isLikelyDuplicate ? "Troligen redan sökt" : "Liknar tidigare ansökan"}</strong>
-                      {duplicateCheck.matches.map((item) => (
-                        <p key={item.applicationId}>
-                          {item.similarity}% · {item.customer} · {item.role} · {item.status}. {item.reason}
-                          <button className="inline-link" type="button" onClick={() => openApplication(item.applicationId)}>
-                            Visa ansökan
-                          </button>
-                        </p>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {match && (
-                  <div className="match-results">
-                    <p>{match.summary}</p>
-                    <div className="analysis-grid">
-                      <div>
-                        <strong>Källa</strong>
-                        <span>{match.analysis.sourceName || "Text"}</span>
-                      </div>
-                      <div>
-                        <strong>Bolag</strong>
-                        <span>{match.analysis.companyName || "Ej identifierat"}</span>
-                      </div>
-                      <div>
-                        <strong>Rekryterande</strong>
-                        <span>{match.analysis.recruitingCompany || match.analysis.companyName || "Ej identifierat"}</span>
-                      </div>
-                      <div>
-                        <strong>Roll</strong>
-                        <span>{match.analysis.role}</span>
-                      </div>
-                      <div>
-                        <strong>Typ</strong>
-                        <span>{match.analysis.assignmentType}</span>
-                      </div>
-                      <div>
-                        <strong>Plats</strong>
-                        <span>{match.analysis.location}{match.analysis.remotePossible ? " · remote möjligt" : ""}</span>
-                      </div>
-                      <div>
-                        <strong>Senioritet</strong>
-                        <span>{match.analysis.seniority}</span>
-                      </div>
-                    </div>
-                    <div className="analysis-section">
-                      <strong>Identifierade kompetenser</strong>
-                      <div className="mini-tags">
-                        {(match.analysis.technologies.length ? match.analysis.technologies : match.analysis.keywords.slice(0, 10)).map((item) => (
-                          <span key={item}>{item}</span>
-                        ))}
-                      </div>
-                    </div>
-                    {(match.analysis.contactNames.length > 0 || match.analysis.contactEmails.length > 0) && (
-                      <div className="analysis-section">
-                        <strong>Kontaktinfo</strong>
-                        <div className="mini-tags">
-                          {[...match.analysis.contactNames, ...match.analysis.contactEmails].map((item) => (
-                            <span key={item}>{item}</span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {match.candidates.map((candidate) => (
-                      <div className={`match-card ${candidate.score < 50 ? "weak" : ""}`} key={candidate.candidateId}>
-                        <div className="match-header">
-                          <div>
-                            <strong>{candidate.name}</strong>
-                            <small>{candidate.title}</small>
-                          </div>
-                          <span>{candidate.score}/100 · {candidate.availability}</span>
-                        </div>
-                        <p>{candidate.reasoning}</p>
-                        <div className="match-detail-grid">
-                          <div>
-                            <strong>Stark match</strong>
-                            <ul>
-                              {candidate.strongSignals.map((item) => <li key={item}>{item}</li>)}
-                            </ul>
-                          </div>
-                          <div>
-                            <strong>Risk</strong>
-                            <ul>
-                              {candidate.risks.map((item) => {
-                                const isMissingRisk = item.toLowerCase().startsWith("saknar explicit");
-                                return (
-                                  <li key={item}>
-                                    {isMissingRisk
-                                      ? (
-                                        <GapReview
-                                          candidateId={candidate.candidateId}
-                                          text={item}
-                                          decision={gapDecisions[`${candidate.candidateId}:${extractGapKeyword(item)}`]}
-                                          references={findProfileReferences(candidate.candidateId, item)}
-                                          onDecision={setGapDecision}
-                                          onOpenKnowledge={openKnowledgeDraft}
-                                        />
-                                      )
-                                      : item}
-                                  </li>
-                                );
-                              })}
-                            </ul>
-                          </div>
-                          <div>
-                            <strong>CV-gap</strong>
-                            <ul>
-                              {candidate.cvGaps.length
-                                ? candidate.cvGaps.map((item) => (
-                                  <li key={item}>
-                                    <GapReview
-                                      candidateId={candidate.candidateId}
-                                      text={item}
-                                      decision={gapDecisions[`${candidate.candidateId}:${extractGapKeyword(item)}`]}
-                                      references={findProfileReferences(candidate.candidateId, item)}
-                                      onDecision={setGapDecision}
-                                      onOpenKnowledge={openKnowledgeDraft}
-                                    />
-                                  </li>
-                                ))
-                                : <li>Inga tydliga CV-gap hittades.</li>}
-                            </ul>
-                          </div>
-                          <div>
-                            <strong>{candidate.suggestedCvVersion}</strong>
-                            <ul>
-                              {candidate.recommendedActions.map((item) => <li key={item}>{item}</li>)}
-                            </ul>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {generatedCv && (
-                  <pre className="cv-preview">{generatedCv}</pre>
-                )}
-              </div>
-                </section>
-              </div>
-            </section>
-          </section>
-        ) : activeView === "applications" ? (
-          <section className="candidate-directory-page">
-            <section className="candidate-directory-shell">
-              <div className="candidate-directory-main">
-                <div className="candidate-directory-topline">
-                  <div>
-                    <span>{copy.dashboard}</span>
-                    <strong>{copy.applications}</strong>
-                  </div>
-                  <div className="candidate-directory-actions">
-                    <button type="button">{copy.defaultView}</button>
-                    <button type="button">{copy.viewSettings}</button>
-                    <button type="button">{copy.importExport}</button>
-                  </div>
-                </div>
-
-                <div className="candidate-directory-filters">
-                  <label>
-                    <Search size={15} />
-                    <input
-                      value={query}
-                      onChange={(event) => setQuery(event.target.value)}
-                      placeholder={copy.searchApplicationsPlaceholder}
-                    />
-                  </label>
-                  <select value={applicationConsultantFilter} onChange={(event) => setApplicationConsultantFilter(event.target.value)}>
-                    <option value="">{copy.allConsultants}</option>
-                    {applicationConsultants.map((name) => <option value={name} key={name}>{name}</option>)}
-                  </select>
-                  <select value={applicationStatusFilter} onChange={(event) => setApplicationStatusFilter(event.target.value)}>
-                    <option value="">{copy.allStatuses}</option>
-                    {applicationStatuses.map((status) => <option value={status} key={status}>{status}</option>)}
-                  </select>
-                  <select value={applicationDateFilter} onChange={(event) => setApplicationDateFilter(event.target.value)}>
-                    <option value="all">{copy.allDates}</option>
-                    <option value="7">{copy.last7Days}</option>
-                    <option value="30">{copy.last30Days}</option>
-                    <option value="90">{copy.last90Days}</option>
-                  </select>
-                  <button type="button" onClick={() => {
-                    setApplicationStatusFilter("");
-                    setApplicationConsultantFilter("");
-                    setApplicationDateFilter("all");
-                  }}>
-                    {copy.clearFilters}
-                  </button>
-                  <button type="button">{copy.sortedByLastActivity}</button>
-                  <button type="button">{copy.filters}</button>
-                </div>
-
-                <div className="candidate-directory-table" role="table" aria-label={copy.applications}>
-                  <div className="candidate-directory-row application-directory-row head" role="row">
-                    <span><input type="checkbox" aria-label="Select all applications" /></span>
-                    <span>{copy.customer}</span>
-                    <span>{copy.role}</span>
-                    <span>{copy.consultantsColumn}</span>
-                    <span>{copy.status}</span>
-                    <span>{copy.feedback}</span>
-                    <span>{copy.appliedAt}</span>
-                    <span>{copy.updatedAt}</span>
-                  </div>
-                  {filteredApplications.map((application) => (
-                    <button
-                      className={`candidate-directory-row application-directory-row ${highlightedApplicationId === application.id ? "selected" : ""}`}
-                      type="button"
-                      role="row"
-                      id={`application-${application.id}`}
-                      key={application.id}
-                      onClick={() => setOpenedApplication(application)}
-                    >
-                      <span><input type="checkbox" aria-label={`Select ${application.customer}`} onClick={(event) => event.stopPropagation()} /></span>
-                      <span><strong>{application.customer}</strong></span>
-                      <span>{application.role}</span>
-                      <span className="directory-skills">
-                        {application.candidateNames.slice(0, 2).map((name) => <b key={name}>{name}</b>)}
-                        {application.candidateNames.length > 2 && <small>+{application.candidateNames.length - 2}</small>}
-                      </span>
-                      <span><i className={application.status === "Vunnen" ? "status-free" : "status-busy"}>{application.status}</i></span>
-                      <span>{application.feedback || "-"}</span>
-                      <span>{new Date(application.appliedAt).toLocaleDateString("sv-SE")}</span>
-                      <span>{new Date(application.updatedAt).toLocaleDateString("sv-SE")}</span>
-                    </button>
-                  ))}
-                  {filteredApplications.length === 0 && (
-                    <div className="empty-state">{copy.noApplicationsMatch}</div>
-                  )}
-                </div>
-              </div>
-            </section>
-            {openedApplication && (
-              <div className="modal-backdrop" role="presentation">
-                <section className="knowledge-modal application-modal" role="dialog" aria-modal="true" aria-labelledby="application-title">
-                  <div className="modal-header">
-                    <div>
-                      <strong id="application-title">{openedApplication.customer}</strong>
-                      <p>{openedApplication.role} · {openedApplication.status}</p>
-                    </div>
-                    <button type="button" onClick={() => setOpenedApplication(null)}>Stäng</button>
-                  </div>
-                  {openedApplication.candidateNames.length > 0 && (
-                    <div className="application-consultants">
-                      {openedApplication.candidateNames.map((name) => <em key={name}>{name}</em>)}
-                    </div>
-                  )}
-                  <pre className="application-ad-full">{openedApplication.advertisement}</pre>
-                </section>
-              </div>
-            )}
-          </section>
-        ) : activeView === "settings" ? (
-          <section className="candidate-directory-page">
-            <section className="candidate-directory-shell">
-              <div className="candidate-directory-main">
-                <div className="candidate-directory-topline">
-                  <div>
-                    <span>{copy.dashboard}</span>
-                    <strong>{copy.settings}</strong>
-                  </div>
-                </div>
-                <section className="simple-workspace">
-                  <div>
-                    <span>{copy.settings}</span>
-                    <h2>Behörigheter, roller och produktinställningar.</h2>
-                    <p>Här flyttar vi senare adminflöden: roller, AI-rättigheter, exportlogg, språk och säkerhet.</p>
-                  </div>
-                  <div className="settings-list">
-                    <article>
-                      <strong>Roller</strong>
-                      <p>Manager, Admin och konsultbehörigheter.</p>
-                    </article>
-                    <article>
-                      <strong>AI-kontroll</strong>
-                      <p>Styr vem som får analysera annonser och generera CV.</p>
-                    </article>
-                    <article>
-                      <strong>Audit log</strong>
-                      <p>Spåra exporter, CV-generering och ansökningshistorik.</p>
-                    </article>
-                  </div>
-                </section>
-              </div>
-            </section>
-          </section>
-        ) : profileCandidate ? (
-          <section className="profile-page">
-            <div className="profile-record-card">
-              <div className="profile-record-hero">
-                <div className="employee-identity">
-                  {profileCandidate.avatarDataUrl
-                    ? <img className="employee-avatar image" src={profileCandidate.avatarDataUrl} alt="" />
-                    : <span className="employee-avatar">{initials(profileCandidate.name)}</span>}
-                  <div>
-                    <strong>{profileCandidate.name}</strong>
-                    <p>{profileCandidate.title} · {profileCandidate.location}</p>
-                  </div>
-                </div>
-                <div className="record-actions">
-                  <button type="button" onClick={() => setActiveView("dashboard")}>Till dashboard</button>
-                  <button type="button" onClick={() => {
-                    setEditingCandidate(profileCandidate);
-                    setCvImportText("");
-                  }}>
-                    Redigera
-                  </button>
-                </div>
-              </div>
-
-              <div className="record-tabs" aria-label="Profilsektioner">
-                <span>Översikt</span>
-                <span>Projekt</span>
-                <span>Ansökningar</span>
-                <span>CV-anpassning</span>
-                <span>Referenser</span>
-              </div>
-
-              <div className="record-details">
-                <div>
-                  <span>E-post</span>
-                  <strong>{profileCandidate.email}</strong>
-                </div>
-                <div>
-                  <span>Telefon</span>
-                  <strong>{profileCandidate.phone}</strong>
-                </div>
-                <div>
-                  <span>Status</span>
-                  <strong>{profileCandidate.availability}</strong>
-                </div>
-                <div>
-                  <span>Tillgänglig från</span>
-                  <strong>{profileCandidate.availableFrom ?? "Ej angivet"}</strong>
-                </div>
-                <div>
-                  <span>Erfarenhet</span>
-                  <strong>{profileCandidate.experienceYears} år</strong>
-                </div>
-                <div>
-                  <span>Senast uppdaterad</span>
-                  <strong>{new Date(profileCandidate.updatedAt).toLocaleDateString("sv-SE")}</strong>
-                </div>
-              </div>
-            </div>
-
-            <div className="profile-page-grid">
-              <div className="profile-page-main">
-                <section className="record-section">
-                  <div className="section-heading">
-                    <h2>Profil och kompetens</h2>
-                    <button type="button" onClick={() => {
-                      setEditingCandidate(profileCandidate);
-                      setCvImportText("");
-                    }}>
-                      Redigera profil
-                    </button>
-                  </div>
-                  <p>{profileCandidate.summary}</p>
-                  <div className="skill-evidence-grid">
-                    {profileCandidate.skills.map((skill) => {
-                      const detail = getSkillDetail(skill, profileCandidate);
-                      const evidence = skillEvidence(skill, profileCandidate);
-                      return (
-                        <article key={skill}>
-                          <div>
-                            <strong>{skill}</strong>
-                            <em>{detail.level}</em>
-                          </div>
-                          <span>{evidence.projectCount} projekt · senast {evidence.lastUsed}</span>
-                          {detail.comment && <p>{detail.comment}</p>}
-                        </article>
-                      );
-                    })}
-                  </div>
-                </section>
-
-                <section className="record-section">
-                  <div className="section-heading">
-                    <h2>Projektöversikt</h2>
-                    <small>{profileCandidate.projects.length} verifierade projekt</small>
-                  </div>
-                  <div className="project-table">
-                    <div className="project-table-head">
-                      <span>Uppdragsgivare</span>
-                      <span>Roll</span>
-                      <span>Period</span>
-                      <span>Teknik</span>
-                    </div>
-                    {profileCandidate.projects.map((project) => (
-                      <article key={`${project.customer}-${project.role}-${project.startDate}`}>
-                        <strong>{project.customer}</strong>
-                        <span>{project.role}</span>
-                        <span>{projectPeriod(project)}</span>
-                        <div className="mini-tags">
-                          {project.technologies.slice(0, 5).map((technology) => <span key={technology}>{technology}</span>)}
-                        </div>
-                        <p>{project.description}</p>
-                      </article>
-                    ))}
-                  </div>
-                </section>
-
-                <section className="record-section">
-                  <div className="section-heading">
-                    <h2>Ansökningar för personen</h2>
-                    <small>{profileApplications.length} sparade ansökningar</small>
-                  </div>
-                  <div className="profile-applications">
-                    {profileApplications.map((application) => (
-                      <article key={application.id}>
-                        <div>
-                          <strong>{application.customer}</strong>
-                          <span>{application.role}</span>
-                        </div>
-                        <em>{application.status}</em>
-                        <small>{new Date(application.appliedAt).toLocaleDateString("sv-SE")}</small>
-                        <button type="button" onClick={() => setOpenedApplication(application)}>Visa annons</button>
-                      </article>
-                    ))}
-                    {profileApplications.length === 0 && <p>Inga ansökningar är kopplade till personen ännu.</p>}
-                  </div>
-                </section>
-              </div>
-
-              <aside className="profile-copilot">
-                <div className="copilot-card">
-                  <Sparkles size={20} />
-                  <strong>InsideGrid AI</strong>
-                  <p>Klistra in en annons på dashboarden och skapa CV som bara använder verifierad profil, projekt och kompetenser.</p>
-                </div>
-                <button className="primary" type="button" onClick={() => downloadPdf(profileCandidate)}>
-                  Hämta standard-CV
-                </button>
-                <button type="button" disabled={!jobAdvertisement || isBusy} onClick={() => downloadTailoredPdf(profileCandidate, "sv")}>
-                  Skapa anpassat CV
-                </button>
-                <button type="button" onClick={() => {
-                  setSelectedId(profileCandidate.id);
-                  setActiveView("matchAssignment");
-                  window.setTimeout(() => document.querySelector<HTMLTextAreaElement>(".ai-panel textarea")?.focus(), 80);
-                }}>
-                  Gå till annonsmatchning
-                </button>
-                <div className="reference-card">
-                  <strong>Referenser i profilen</strong>
-                  <p>{profileCandidate.notes || "Inga interna noteringar ännu."}</p>
-                </div>
-              </aside>
-            </div>
-            {openedApplication && (
-              <div className="modal-backdrop" role="presentation">
-                <section className="knowledge-modal application-modal" role="dialog" aria-modal="true" aria-labelledby="profile-application-title">
-                  <div className="modal-header">
-                    <div>
-                      <strong id="profile-application-title">{openedApplication.customer}</strong>
-                      <p>{openedApplication.role} · {openedApplication.status}</p>
-                    </div>
-                    <button type="button" onClick={() => setOpenedApplication(null)}>Stäng</button>
-                  </div>
-                  {openedApplication.candidateNames.length > 0 && (
-                    <div className="application-consultants">
-                      {openedApplication.candidateNames.map((name) => <em key={name}>{name}</em>)}
-                    </div>
-                  )}
-                  <pre className="application-ad-full">{openedApplication.advertisement}</pre>
-                </section>
-              </div>
-            )}
-          </section>
-        ) : (
-          <section className="empty-state">Välj en konsult för att öppna profilsidan.</section>
-        )}
-      </section>
-      <footer className="workspace-footer">
-        <span>© 2026 InsideGrid</span>
-        <div>
-          <button type="button">Terms & Conditions</button>
-          <button type="button">Privacy Policy</button>
-        </div>
-      </footer>
-      <button
-        className={`floating-assistant-button ${assistantOpen ? "active" : ""}`}
-        type="button"
-        aria-label="Öppna AI-assistent"
-        onClick={() => setAssistantOpen((current) => !current)}
-      >
-        <Sparkles size={21} />
-      </button>
-      {assistantOpen && (
-        <aside className="assistant-drawer" aria-label="AI Assistant">
-          <div className="assistant-drawer-header">
-            <div>
-              <span>InsideGrid Copilot</span>
-              <strong>AI Assistant</strong>
-            </div>
-            <button type="button" aria-label="Stäng AI-assistent" onClick={() => setAssistantOpen(false)}>
-              <X size={18} />
-            </button>
-          </div>
-          <div className="assistant-drawer-body">
-            <p>Fråga om konsulter, uppdrag, CV-data och nästa steg. Assistenten använder kontexten från din nuvarande vy.</p>
-            <label>
-              Fråga
-              <textarea
-                value={assistantQuestion}
-                onChange={(event) => setAssistantQuestion(event.target.value)}
-                placeholder="T.ex. vilka konsulter är lediga och kan Microsoft Fabric?"
+        <nav>
+          <NavItem
+            icon={<LayoutDashboard />}
+            label="Overview"
+            active={view === "dashboard"}
+            onClick={() => setView("dashboard")}
+          />
+          <NavItem
+            icon={<Grid2X2 />}
+            label="Pipeline"
+            active={view === "pipeline"}
+            onClick={() => setView("pipeline")}
+            badge={
+              applications.filter(
+                (item) => !["rejected", "hired"].includes(item.stage),
+              ).length
+            }
+          />
+          <NavItem
+            icon={<BriefcaseBusiness />}
+            label={
+              organization.workspace_mode === "consulting"
+                ? "Assignments"
+                : "Jobs"
+            }
+            active={view === "jobs"}
+            onClick={() => setView("jobs")}
+          />
+          <NavItem
+            icon={<Users />}
+            label="Talent"
+            active={view === "candidates"}
+            onClick={() => setView("candidates")}
+          />
+          {isAdmin && (
+            <>
+              <span className="nav-section">ADMINISTRATION</span>
+              <NavItem
+                icon={<ShieldCheck />}
+                label="Access & accounts"
+                active={view === "team"}
+                onClick={() => setView("team")}
               />
-            </label>
-            <div className="assistant-prompts compact">
-              {[
-                "Vad behöver jag prioritera idag?",
-                "Vilka uppdrag saknar kandidater?",
-                "Vilka konsulter är tillgängliga?",
-                "Skapa en shortlist med 3 kandidater"
-              ].map((prompt) => (
-                <button type="button" key={prompt} onClick={() => setAssistantQuestion(prompt)}>
-                  {prompt}
-                </button>
-              ))}
+            </>
+          )}
+        </nav>
+        <div className="sidebar-foot">
+          {demoMode && <span className="demo-pill">Interactive demo</span>}
+          <button className="profile-chip" onClick={exit}>
+            <span className="avatar">
+              {initials(workspace.profile.full_name)}
+            </span>
+            <span>
+              <strong>{workspace.profile.full_name}</strong>
+              <small>{isAdmin ? "Platform administrator" : "Customer"}</small>
+            </span>
+            <LogOut size={16} />
+          </button>
+        </div>
+      </aside>
+      <main className="workspace">
+        <header className="topbar">
+          <div className="topbar-title">
+            <button className="menu-button" onClick={() => setMobileNav(true)}>
+              <Menu />
+            </button>
+            <div>
+              <span>Workspace</span>
+              <h1>{titleByView[view]}</h1>
             </div>
           </div>
-        </aside>
-      )}
-      {knowledgeDraft && (
-        <KnowledgeModal
-          candidate={candidates.find((candidate) => candidate.id === knowledgeDraft.candidateId)!}
-          draft={knowledgeDraft}
-          onChange={setKnowledgeDraft}
-          onClose={() => setKnowledgeDraft(null)}
-          onSave={saveKnowledgeDraft}
-          isBusy={isBusy}
+          <div className="topbar-actions">
+            {isAdmin && workspace.organizations.length > 1 && (
+              <label className="organization-picker">
+                <Building2 size={16} />
+                <select
+                  value={organization.id}
+                  onChange={(event) => {
+                    setSelectedOrganizationId(event.target.value);
+                    setJobFilter("all");
+                  }}
+                >
+                  {workspace.organizations.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown size={15} />
+              </label>
+            )}
+            <button
+              className="primary-button"
+              onClick={() => setModal("candidate")}
+            >
+              <Plus size={17} /> Add candidate
+            </button>
+          </div>
+        </header>
+        <div className="content">
+          {view === "dashboard" && (
+            <Dashboard
+              organization={organization}
+              jobs={jobs}
+              candidates={candidates}
+              applications={applications}
+              onNavigate={setView}
+              onAddJob={() => setModal("job")}
+            />
+          )}
+          {view === "pipeline" && (
+            <Pipeline
+              jobs={jobs}
+              candidates={candidates}
+              applications={applications}
+              jobFilter={jobFilter}
+              onJobFilter={setJobFilter}
+              search={candidateSearch}
+              onSearch={setCandidateSearch}
+              onMove={moveApplication}
+              onSelect={setSelectedApplicationId}
+              organization={organization}
+            />
+          )}
+          {view === "jobs" && (
+            <Jobs
+              jobs={jobs}
+              applications={applications}
+              organization={organization}
+              onAdd={() => setModal("job")}
+              onOpenPipeline={(id) => {
+                setJobFilter(id);
+                setView("pipeline");
+              }}
+            />
+          )}
+          {view === "candidates" && (
+            <Candidates
+              candidates={candidates}
+              applications={applications}
+              jobs={jobs}
+              onAdd={() => setModal("candidate")}
+            />
+          )}
+          {view === "team" && isAdmin && (
+            <Team
+              organizations={workspace.organizations}
+              onAdd={() => setModal("user")}
+            />
+          )}
+        </div>
+      </main>
+      {modal === "job" && (
+        <JobModal
+          organization={organization}
+          demoMode={demoMode}
+          onClose={() => setModal(null)}
+          onCreated={(job) => {
+            update("jobs", [job, ...workspace.jobs]);
+            setModal(null);
+            setToast("Job created.");
+          }}
         />
       )}
-      {openedCandidate && (
-        <div className="modal-backdrop" role="presentation">
-          <section className="employee-modal" role="dialog" aria-modal="true" aria-labelledby="employee-title">
-            <div className="employee-hero">
-              <div className="employee-identity">
-                {openedCandidate.avatarDataUrl
-                  ? <img className="employee-avatar image" src={openedCandidate.avatarDataUrl} alt="" />
-                  : <span className="employee-avatar">{initials(openedCandidate.name)}</span>}
-                <div>
-                  <strong id="employee-title">{openedCandidate.name}</strong>
-                  <p>{openedCandidate.title}</p>
-                </div>
-              </div>
-              <div className="employee-hero-actions">
-                <button type="button" onClick={() => {
-                  setEditingCandidate(openedCandidate);
-                  setCvImportText("");
-                }}>
-                  Redigera
-                </button>
-                <button type="button" onClick={() => openCandidatePage(openedCandidate)}>
-                  Öppna profilsida
-                </button>
-                <button type="button" onClick={() => setOpenedCandidate(null)}>Stäng</button>
-              </div>
-            </div>
-
-            <div className="employee-stats">
-              <div>
-                <span>Status</span>
-                <strong>{openedCandidate.availability}</strong>
-              </div>
-              <div>
-                <span>Erfarenhet</span>
-                <strong>{openedCandidate.experienceYears} år</strong>
-              </div>
-              <div>
-                <span>Projekt</span>
-                <strong>{openedCandidate.projects.length}</strong>
-              </div>
-              <div>
-                <span>Språk</span>
-                <strong>{openedCandidate.languages.join(", ")}</strong>
-              </div>
-            </div>
-
-            <div className="employee-layout">
-              <aside className="employee-side">
-                <div className="employee-contact">
-                  <span><Mail size={15} />{openedCandidate.email}</span>
-                  <span><Phone size={15} />{openedCandidate.phone}</span>
-                  <span><MapPin size={15} />{openedCandidate.location}</span>
-                  <span><CalendarDays size={15} />Tillgänglig från {openedCandidate.availableFrom ?? "ej angivet"}</span>
-                </div>
-                <div className="employee-actions">
-                  <button className="primary" type="button" onClick={() => downloadPdf(openedCandidate)}>
-                    <FilePenLine size={16} />
-                    Hämta standard-CV
-                  </button>
-                  <button type="button" disabled={!jobAdvertisement || isBusy} onClick={() => downloadTailoredPdf(openedCandidate, "sv")}>
-                    <Sparkles size={16} />
-                    Skapa anpassat CV
-                  </button>
-                  <button type="button" onClick={() => {
-                    setSelectedId(openedCandidate.id);
-                    setOpenedCandidate(null);
-                    document.querySelector<HTMLTextAreaElement>(".ai-panel textarea")?.focus();
-                  }}>
-                    <Sparkles size={16} />
-                    Matcha mot annons
-                  </button>
-                </div>
-              </aside>
-
-              <div className="employee-main">
-                <section>
-                  <h3>Profil</h3>
-                  <p>{openedCandidate.summary}</p>
-                </section>
-                <section>
-                  <h3>Kompetenser</h3>
-                  <div className="skill-evidence-grid compact">
-                    {openedCandidate.skills.map((skill) => {
-                      const detail = getSkillDetail(skill, openedCandidate);
-                      const evidence = skillEvidence(skill, openedCandidate);
-                      return (
-                        <article key={skill}>
-                          <div>
-                            <strong>{skill}</strong>
-                            <em>{detail.level}</em>
-                          </div>
-                          <span>{evidence.projectCount} projekt · senast {evidence.lastUsed}</span>
-                        </article>
-                      );
-                    })}
-                  </div>
-                </section>
-                <section>
-                  <h3>Projekt</h3>
-                  <div className="employee-projects">
-                    {openedCandidate.projects.map((project) => (
-                      <article key={`${project.customer}-${project.role}-${project.startDate}`}>
-                        <div>
-                          <strong>{project.customer}</strong>
-                          <span><BriefcaseBusiness size={14} />{project.role}</span>
-                        </div>
-                        <div className="project-meta">
-                          <span>Uppdragsgivare/bolag: {project.customer}</span>
-                          <span>Period: {projectPeriod(project)}</span>
-                        </div>
-                        <p>{project.description}</p>
-                        <strong className="tech-heading">Teknik i projektet</strong>
-                        <div className="mini-tags">
-                          {project.technologies.map((technology) => <span key={technology}>{technology}</span>)}
-                        </div>
-                      </article>
-                    ))}
-                  </div>
-                </section>
-              </div>
-            </div>
-          </section>
+      {modal === "candidate" && (
+        <CandidateModal
+          organization={organization}
+          jobs={jobs.filter((item) => item.status === "open")}
+          demoMode={demoMode}
+          onClose={() => setModal(null)}
+          onCreated={(candidate, application) => {
+            update("candidates", [candidate, ...workspace.candidates]);
+            if (application)
+              update("applications", [application, ...workspace.applications]);
+            setModal(null);
+            setToast(
+              application
+                ? "Candidate added to the pipeline."
+                : "Candidate profile created.",
+            );
+          }}
+        />
+      )}
+      {modal === "user" && (
+        <UserModal
+          organizations={workspace.organizations}
+          demoMode={demoMode}
+          onClose={() => setModal(null)}
+          onCreated={(created) => {
+            if (created)
+              update("organizations", [...workspace.organizations, created]);
+            setModal(null);
+            setToast("Account created securely.");
+          }}
+        />
+      )}
+      {selectedApplication && selectedCandidate && selectedJob && (
+        <CandidateDrawer
+          candidate={selectedCandidate}
+          job={selectedJob}
+          application={selectedApplication}
+          evaluation={selectedEvaluation}
+          organization={organization}
+          onClose={() => setSelectedApplicationId(null)}
+          onMove={moveApplication}
+          onEvaluate={runEvaluation}
+        />
+      )}
+      {toast && (
+        <div className="toast">
+          <Check size={17} /> {toast}
         </div>
       )}
-      {editingCandidate && (
-        <div className="modal-backdrop" role="presentation">
-          <section className="edit-modal" role="dialog" aria-modal="true" aria-labelledby="edit-title">
-            <div className="modal-header">
-              <div>
-                <strong id="edit-title">Redigera profil</strong>
-                <p>{editingCandidate.name} · ändringar sparas i kandidatdatat</p>
-              </div>
-              <button type="button" onClick={() => setEditingCandidate(null)}>Stäng</button>
-            </div>
+    </div>
+  );
+}
 
-            <div className="edit-grid">
-              <label>
-                Namn
-                <input value={editingCandidate.name} onChange={(event) => setEditingCandidate({ ...editingCandidate, name: event.target.value })} />
-              </label>
-              <label>
-                Titel
-                <input value={editingCandidate.title} onChange={(event) => setEditingCandidate({ ...editingCandidate, title: event.target.value })} />
-              </label>
-              <label>
-                E-post
-                <input value={editingCandidate.email} onChange={(event) => setEditingCandidate({ ...editingCandidate, email: event.target.value })} />
-              </label>
-              <label>
-                Telefon
-                <input value={editingCandidate.phone} onChange={(event) => setEditingCandidate({ ...editingCandidate, phone: event.target.value })} />
-              </label>
-              <label>
-                Plats
-                <input value={editingCandidate.location} onChange={(event) => setEditingCandidate({ ...editingCandidate, location: event.target.value })} />
-              </label>
-              <label>
-                Tillgänglighet
-                <select value={editingCandidate.availability} onChange={(event) => setEditingCandidate({ ...editingCandidate, availability: event.target.value })}>
-                  <option>Tillgänglig</option>
-                  <option>Upptagen</option>
-                </select>
-              </label>
-              <label>
-                Tillgänglig från
-                <input type="date" value={editingCandidate.availableFrom ?? ""} onChange={(event) => setEditingCandidate({ ...editingCandidate, availableFrom: event.target.value })} />
-              </label>
-              <label>
-                Erfarenhet år
-                <input type="number" min="0" value={editingCandidate.experienceYears} onChange={(event) => setEditingCandidate({ ...editingCandidate, experienceYears: Number(event.target.value) })} />
-              </label>
-            </div>
-
-            <div className="edit-upload-row">
-              <label>
-                Profilbild
-                <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) readProfileImage(file, editingCandidate);
-                }} />
-              </label>
-              <label>
-                Ladda upp CV-text
-                <input type="file" accept=".txt,.md,.csv,.pdf,.docx" onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) importCvFile(file);
-                }} />
-              </label>
-            </div>
-
-            {cvImportText && (
-              <div className="cv-import-box">
-                <strong>CV-import</strong>
-                <p>Texten används som underlag för att föreslå profiltext och kompetenser. Granska innan du sparar.</p>
-                <textarea value={cvImportText} onChange={(event) => setCvImportText(event.target.value)} />
-                <button type="button" onClick={applyCvImport}>Fyll profil från CV-text</button>
-              </div>
-            )}
-
-            <label>
-              Profiltext
-              <textarea value={editingCandidate.summary} onChange={(event) => setEditingCandidate({ ...editingCandidate, summary: event.target.value })} />
-            </label>
-            <div className="edit-skills">
-              <div className="section-heading">
-                <strong>Kompetenser</strong>
-                <button type="button" onClick={addEditingSkill}>Lägg till kompetens</button>
-              </div>
-              {editingCandidate.skills.map((skill, index) => {
-                const detail = getSkillDetail(skill, editingCandidate);
-                const evidence = skillEvidence(skill, editingCandidate);
-                return (
-                  <article key={`${skill}-${index}`}>
-                    <label>
-                      Kompetens
-                      <input value={skill} onChange={(event) => updateEditingSkill(index, event.target.value)} />
-                    </label>
-                    <label>
-                      Nivå
-                      <select value={detail.level} onChange={(event) => updateEditingSkillDetail(skill, { level: event.target.value as SkillDetail["level"] })}>
-                        <option>Grund</option>
-                        <option>Van</option>
-                        <option>Stark</option>
-                        <option>Expert</option>
-                      </select>
-                    </label>
-                    <label>
-                      Kommentar
-                      <input
-                        value={detail.comment}
-                        onChange={(event) => updateEditingSkillDetail(skill, { comment: event.target.value })}
-                        placeholder={`T.ex. använd i ${evidence.projectCount} projekt`}
-                      />
-                    </label>
-                    <span>{evidence.projectCount} projekt · senast {evidence.lastUsed}</span>
-                    <button type="button" onClick={() => removeEditingSkill(index)}>Ta bort</button>
-                  </article>
-                );
-              })}
-            </div>
-
-            <div className="edit-projects">
-              <strong>Projekt</strong>
-              {editingCandidate.projects.map((project, index) => (
-                <article key={`${project.customer}-${project.role}-${index}`}>
-                  <div className="edit-grid">
-                    <label>
-                      Uppdragsgivare/bolag
-                      <input value={project.customer} onChange={(event) => updateEditingProject(index, { customer: event.target.value })} />
-                    </label>
-                    <label>
-                      Roll
-                      <input value={project.role} onChange={(event) => updateEditingProject(index, { role: event.target.value })} />
-                    </label>
-                    <label>
-                      Start
-                      <input type="date" value={project.startDate ?? ""} onChange={(event) => updateEditingProject(index, { startDate: event.target.value })} />
-                    </label>
-                    <label>
-                      Slut
-                      <input type="date" value={project.endDate ?? ""} onChange={(event) => updateEditingProject(index, { endDate: event.target.value || undefined })} />
-                    </label>
-                  </div>
-                  <label>
-                    Beskrivning
-                    <textarea value={project.description} onChange={(event) => updateEditingProject(index, { description: event.target.value })} />
-                  </label>
-                  <label>
-                    Teknik i projektet
-                    <input
-                      value={project.technologies.join(", ")}
-                      onChange={(event) => updateEditingProject(index, {
-                        technologies: event.target.value.split(",").map((item) => item.trim()).filter(Boolean)
-                      })}
-                    />
-                  </label>
-                </article>
-              ))}
-            </div>
-
-            <div className="modal-actions">
-              <button type="button" onClick={() => setEditingCandidate(null)}>Avbryt</button>
-              <button className="primary" type="button" disabled={isBusy} onClick={async () => {
-                setIsBusy(true);
-                try {
-                  await saveCandidateProfile(editingCandidate);
-                  setEditingCandidate(null);
-                } finally {
-                  setIsBusy(false);
-                }
-              }}>
-                Spara ändringar
-              </button>
-            </div>
-          </section>
-        </div>
-      )}
-      {profileOpen && (
-        <div className="modal-backdrop" role="presentation">
-          <section className="profile-modal" role="dialog" aria-modal="true" aria-labelledby="profile-title">
-            <div className="modal-header">
-              <div className="profile-heading">
-                <span>{initials(session.user.displayName)}</span>
-                <div>
-                  <strong id="profile-title">Mina sidor</strong>
-                  <p>{session.user.displayName} · {session.user.role}</p>
-                </div>
-              </div>
-              <button type="button" onClick={() => setProfileOpen(false)}>Stäng</button>
-            </div>
-            <div className="profile-grid">
-              <label>
-                Namn
-                <input value={session.user.displayName} readOnly />
-              </label>
-              <label>
-                E-post
-                <input value={session.user.email} readOnly />
-              </label>
-              <label>
-                Roll
-                <input value={session.user.role} readOnly />
-              </label>
-              <label>
-                Standardspråk för CV
-                <select defaultValue="sv">
-                  <option value="sv">Svenska</option>
-                  <option value="en">Engelska</option>
-                </select>
-              </label>
-            </div>
-            <div className="profile-note">
-              Här kan vi senare koppla riktiga användarinställningar, profilbild, notifieringar och egna CV-preferenser.
-            </div>
-          </section>
-        </div>
-      )}
+function NavItem({
+  icon,
+  label,
+  active,
+  badge,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  active: boolean;
+  badge?: number;
+  onClick: () => void;
+}) {
+  return (
+    <button className={`nav-item ${active ? "active" : ""}`} onClick={onClick}>
+      <span>{icon}</span>
+      {label}
+      {badge !== undefined && <small>{badge}</small>}
+    </button>
+  );
+}
+function EmptyWorkspace({
+  profileName,
+  onExit,
+}: {
+  profileName: string;
+  onExit: () => void;
+}) {
+  return (
+    <main className="empty-workspace">
+      <span className="brand-mark">
+        <Grid2X2 />
+      </span>
+      <h1>Welcome, {profileName}</h1>
+      <p>
+        Your account is active but has not been connected to an organization
+        yet.
+      </p>
+      <button className="secondary-button" onClick={onExit}>
+        Sign out
+      </button>
     </main>
   );
 }
 
-createRoot(document.getElementById("root")!).render(<App />);
+function Dashboard({
+  organization,
+  jobs,
+  candidates,
+  applications,
+  onNavigate,
+  onAddJob,
+}: {
+  organization: Organization;
+  jobs: Job[];
+  candidates: Candidate[];
+  applications: Application[];
+  onNavigate: (view: View) => void;
+  onAddJob: () => void;
+}) {
+  const active = applications.filter(
+    (item) => !["hired", "rejected"].includes(item.stage),
+  );
+  const recent = [...active]
+    .sort((a, b) => b.stage_changed_at.localeCompare(a.stage_changed_at))
+    .slice(0, 5);
+  return (
+    <>
+      <section className="hero-panel">
+        <div>
+          <span className="eyebrow dark">
+            {organization.workspace_mode === "consulting"
+              ? "Consulting workspace"
+              : "Recruitment workspace"}
+          </span>
+          <h2>Good morning. Here’s where things stand.</h2>
+          <p>
+            {organization.name} has {active.length} active candidate processes
+            across {jobs.filter((item) => item.status === "open").length} open{" "}
+            {organization.workspace_mode === "consulting"
+              ? "assignments"
+              : "jobs"}
+            .
+          </p>
+        </div>
+        <div className="hero-actions">
+          <button
+            className="primary-button"
+            onClick={() => onNavigate("pipeline")}
+          >
+            Open pipeline <ArrowRight size={17} />
+          </button>
+          <button className="secondary-button" onClick={onAddJob}>
+            <Plus size={17} /> Create{" "}
+            {organization.workspace_mode === "consulting"
+              ? "assignment"
+              : "job"}
+          </button>
+        </div>
+      </section>
+      <section className="metric-grid">
+        <Metric
+          icon={<BriefcaseBusiness />}
+          label={`Open ${organization.workspace_mode === "consulting" ? "assignments" : "jobs"}`}
+          value={jobs.filter((item) => item.status === "open").length}
+          note="Accepting candidates"
+          tone="navy"
+        />
+        <Metric
+          icon={<Users />}
+          label="Active candidates"
+          value={active.length}
+          note={`${candidates.length} profiles in talent pool`}
+          tone="blue"
+        />
+        <Metric
+          icon={<BarChart3 />}
+          label="Needs attention"
+          value={
+            active.filter((item) => daysInStage(item.stage_changed_at) >= 3)
+              .length
+          }
+          note="3+ days without movement"
+          tone="amber"
+        />
+        <Metric
+          icon={<Check />}
+          label={
+            organization.workspace_mode === "consulting" ? "Placed" : "Hired"
+          }
+          value={applications.filter((item) => item.stage === "hired").length}
+          note="Successful outcomes"
+          tone="green"
+        />
+      </section>
+      <section className="dashboard-grid">
+        <article className="panel activity-panel">
+          <header>
+            <div>
+              <span className="eyebrow dark">LIVE PIPELINE</span>
+              <h3>Recent candidate movement</h3>
+            </div>
+            <button
+              className="text-button"
+              onClick={() => onNavigate("pipeline")}
+            >
+              View all <ArrowRight size={15} />
+            </button>
+          </header>
+          <div className="activity-list">
+            {recent.map((application) => {
+              const candidate = candidates.find(
+                (item) => item.id === application.candidate_id,
+              );
+              const job = jobs.find((item) => item.id === application.job_id);
+              return candidate && job ? (
+                <div className="activity-row" key={application.id}>
+                  <span className="avatar soft">
+                    {initials(candidate.full_name)}
+                  </span>
+                  <div>
+                    <strong>{candidate.full_name}</strong>
+                    <p>{job.title}</p>
+                  </div>
+                  <span className={`stage-badge ${application.stage}`}>
+                    {application.stage}
+                  </span>
+                  <small>
+                    {daysInStage(application.stage_changed_at)}d in stage
+                  </small>
+                </div>
+              ) : null;
+            })}
+            {!recent.length && (
+              <EmptyState
+                title="No active candidates yet"
+                text="Add a candidate to an open job to start the pipeline."
+              />
+            )}
+          </div>
+        </article>
+        <article className="panel focus-panel">
+          <span className="spark-icon">
+            <Sparkles />
+          </span>
+          <span className="eyebrow dark">HUMAN-CENTERED AI</span>
+          <h3>Evidence before intuition</h3>
+          <p>
+            InsideGrid compares verified candidate information with job
+            requirements and turns gaps into useful interview questions.
+          </p>
+          <ul>
+            <li>
+              <Check size={15} /> Evidence-backed strengths
+            </li>
+            <li>
+              <Check size={15} /> Clear unknowns and gaps
+            </li>
+            <li>
+              <Check size={15} /> No automated hiring decisions
+            </li>
+          </ul>
+          <button
+            className="secondary-button"
+            onClick={() => onNavigate("pipeline")}
+          >
+            Review candidates
+          </button>
+        </article>
+      </section>
+    </>
+  );
+}
+function Metric({
+  icon,
+  label,
+  value,
+  note,
+  tone,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: number;
+  note: string;
+  tone: string;
+}) {
+  return (
+    <article className="metric-card">
+      <span className={`metric-icon ${tone}`}>{icon}</span>
+      <div>
+        <small>{label}</small>
+        <strong>{value}</strong>
+        <p>{note}</p>
+      </div>
+    </article>
+  );
+}
+
+function Pipeline({
+  jobs,
+  candidates,
+  applications,
+  jobFilter,
+  onJobFilter,
+  search,
+  onSearch,
+  onMove,
+  onSelect,
+  organization,
+}: {
+  jobs: Job[];
+  candidates: Candidate[];
+  applications: Application[];
+  jobFilter: string;
+  onJobFilter: (value: string) => void;
+  search: string;
+  onSearch: (value: string) => void;
+  onMove: (application: Application, stage: ApplicationStage) => void;
+  onSelect: (id: string) => void;
+  organization: Organization;
+}) {
+  const visible = applications.filter((application) => {
+    const candidate = candidates.find(
+      (item) => item.id === application.candidate_id,
+    );
+    return (
+      application.stage !== "rejected" &&
+      (jobFilter === "all" || application.job_id === jobFilter) &&
+      candidate?.full_name.toLowerCase().includes(search.trim().toLowerCase())
+    );
+  });
+  return (
+    <>
+      <section className="page-heading">
+        <div>
+          <span className="eyebrow dark">LIVE WORKFLOW</span>
+          <h2>Move every candidate forward with context.</h2>
+          <p>
+            Filter by job or candidate, then open a card to review details and
+            AI insights.
+          </p>
+        </div>
+        <span className="record-count">{visible.length} active records</span>
+      </section>
+      <section className="filter-bar">
+        <label>
+          <Filter size={16} />
+          <select
+            value={jobFilter}
+            onChange={(event) => onJobFilter(event.target.value)}
+          >
+            <option value="all">
+              All{" "}
+              {organization.workspace_mode === "consulting"
+                ? "assignments"
+                : "jobs"}
+            </option>
+            {jobs.map((job) => (
+              <option key={job.id} value={job.id}>
+                {job.title}
+              </option>
+            ))}
+          </select>
+          <ChevronDown size={15} />
+        </label>
+        <label className="search-field">
+          <Search size={16} />
+          <input
+            value={search}
+            onChange={(event) => onSearch(event.target.value)}
+            placeholder="Search candidate name…"
+          />
+        </label>
+      </section>
+      <section className="kanban">
+        {stages.map((stage) => {
+          const items = visible.filter((item) => item.stage === stage.id);
+          return (
+            <div className="kanban-column" key={stage.id}>
+              <header>
+                <div>
+                  <span className={`stage-dot ${stage.tone}`} />
+                  <strong>
+                    {stage.id === "hired" &&
+                    organization.workspace_mode === "consulting"
+                      ? "Placed"
+                      : stage.label}
+                  </strong>
+                </div>
+                <span>{items.length}</span>
+              </header>
+              <div className="kanban-stack">
+                {items.map((application) => {
+                  const candidate = candidates.find(
+                    (item) => item.id === application.candidate_id,
+                  );
+                  const job = jobs.find(
+                    (item) => item.id === application.job_id,
+                  );
+                  return candidate && job ? (
+                    <article
+                      className="candidate-card"
+                      key={application.id}
+                      onClick={() => onSelect(application.id)}
+                      tabIndex={0}
+                    >
+                      <div className="candidate-card-head">
+                        <span className="avatar soft">
+                          {initials(candidate.full_name)}
+                        </span>
+                        <div>
+                          <strong>{candidate.full_name}</strong>
+                          <small>{candidate.professional_title}</small>
+                        </div>
+                      </div>
+                      <p className="job-context">
+                        <BriefcaseBusiness size={14} /> {job.title}
+                      </p>
+                      <div className="skill-row">
+                        {candidate.skills.slice(0, 2).map((skill) => (
+                          <span key={skill}>{skill}</span>
+                        ))}
+                        {candidate.skills.length > 2 && (
+                          <span>+{candidate.skills.length - 2}</span>
+                        )}
+                      </div>
+                      <footer>
+                        <small>
+                          {daysInStage(application.stage_changed_at)} days in
+                          stage
+                        </small>
+                        <select
+                          value={application.stage}
+                          onClick={(event) => event.stopPropagation()}
+                          onChange={(event) =>
+                            onMove(
+                              application,
+                              event.target.value as ApplicationStage,
+                            )
+                          }
+                        >
+                          {stages.map((item) => (
+                            <option key={item.id} value={item.id}>
+                              {item.label}
+                            </option>
+                          ))}
+                          <option value="rejected">Rejected</option>
+                        </select>
+                      </footer>
+                    </article>
+                  ) : null;
+                })}
+                {!items.length && (
+                  <div className="column-empty">No candidates</div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </section>
+    </>
+  );
+}
+
+function Jobs({
+  jobs,
+  applications,
+  organization,
+  onAdd,
+  onOpenPipeline,
+}: {
+  jobs: Job[];
+  applications: Application[];
+  organization: Organization;
+  onAdd: () => void;
+  onOpenPipeline: (id: string) => void;
+}) {
+  return (
+    <>
+      <section className="page-heading split">
+        <div>
+          <span className="eyebrow dark">OPPORTUNITIES</span>
+          <h2>
+            {organization.workspace_mode === "consulting"
+              ? "Client assignments"
+              : "Open roles"}
+          </h2>
+          <p>
+            Create the need first, then build a focused candidate pipeline
+            around it.
+          </p>
+        </div>
+        <button className="primary-button" onClick={onAdd}>
+          <Plus size={17} /> Create{" "}
+          {organization.workspace_mode === "consulting" ? "assignment" : "job"}
+        </button>
+      </section>
+      <section className="job-grid">
+        {jobs.map((job) => (
+          <article className="job-card" key={job.id}>
+            <header>
+              <span className="job-icon">
+                <BriefcaseBusiness />
+              </span>
+              <span className={`status-pill ${job.status}`}>{job.status}</span>
+            </header>
+            <h3>{job.title}</h3>
+            <p>
+              {job.department || "General"} ·{" "}
+              {job.location || "Location flexible"}
+            </p>
+            <div className="job-stats">
+              <span>
+                <strong>
+                  {applications.filter((item) => item.job_id === job.id).length}
+                </strong>{" "}
+                candidates
+              </span>
+              <span>
+                <strong>
+                  {
+                    applications.filter(
+                      (item) =>
+                        item.job_id === job.id && item.stage === "interview",
+                    ).length
+                  }
+                </strong>{" "}
+                interviews
+              </span>
+            </div>
+            <button
+              className="secondary-button wide"
+              onClick={() => onOpenPipeline(job.id)}
+            >
+              Open pipeline <ArrowRight size={16} />
+            </button>
+          </article>
+        ))}
+        <button className="create-card" onClick={onAdd}>
+          <Plus />
+          <strong>
+            Create{" "}
+            {organization.workspace_mode === "consulting"
+              ? "assignment"
+              : "job"}
+          </strong>
+          <span>Start a new pipeline</span>
+        </button>
+      </section>
+    </>
+  );
+}
+
+function Candidates({
+  candidates,
+  applications,
+  jobs,
+  onAdd,
+}: {
+  candidates: Candidate[];
+  applications: Application[];
+  jobs: Job[];
+  onAdd: () => void;
+}) {
+  const [search, setSearch] = useState("");
+  const filtered = useMemo(
+    () =>
+      candidates.filter((item) =>
+        `${item.full_name} ${item.professional_title} ${item.skills.join(" ")}`
+          .toLowerCase()
+          .includes(search.toLowerCase()),
+      ),
+    [candidates, search],
+  );
+  return (
+    <>
+      <section className="page-heading split">
+        <div>
+          <span className="eyebrow dark">TALENT DATABASE</span>
+          <h2>People, skills, and possibilities.</h2>
+          <p>
+            One profile can be considered for multiple roles without duplicating
+            candidate data.
+          </p>
+        </div>
+        <button className="primary-button" onClick={onAdd}>
+          <Plus size={17} /> Add candidate
+        </button>
+      </section>
+      <section className="filter-bar">
+        <label className="search-field grow">
+          <Search size={16} />
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search name, title, or skill…"
+          />
+        </label>
+      </section>
+      <section className="table-panel">
+        <div className="talent-row talent-head">
+          <span>Candidate</span>
+          <span>Skills</span>
+          <span>Active processes</span>
+          <span>Contact</span>
+        </div>
+        {filtered.map((candidate) => {
+          const active = applications.filter(
+            (item) =>
+              item.candidate_id === candidate.id &&
+              !["rejected", "hired"].includes(item.stage),
+          );
+          return (
+            <div className="talent-row" key={candidate.id}>
+              <span className="person-cell">
+                <span className="avatar soft">
+                  {initials(candidate.full_name)}
+                </span>
+                <span>
+                  <strong>{candidate.full_name}</strong>
+                  <small>
+                    {candidate.professional_title} · {candidate.location}
+                  </small>
+                </span>
+              </span>
+              <span className="skill-row">
+                {candidate.skills.slice(0, 3).map((skill) => (
+                  <i key={skill}>{skill}</i>
+                ))}
+              </span>
+              <span>
+                {active.length
+                  ? active
+                      .map(
+                        (item) =>
+                          jobs.find((job) => job.id === item.job_id)?.title,
+                      )
+                      .filter(Boolean)
+                      .join(", ")
+                  : "Talent pool"}
+              </span>
+              <span className="contact-links">
+                <a href={`mailto:${candidate.email}`}>{candidate.email}</a>
+                {candidate.linkedin_url && (
+                  <a
+                    href={candidate.linkedin_url}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <Linkedin size={15} /> Profile
+                  </a>
+                )}
+              </span>
+            </div>
+          );
+        })}
+        {!filtered.length && (
+          <EmptyState
+            title="No matching candidates"
+            text="Try a different name, title, or skill."
+          />
+        )}
+      </section>
+    </>
+  );
+}
+function Team({
+  organizations,
+  onAdd,
+}: {
+  organizations: Organization[];
+  onAdd: () => void;
+}) {
+  return (
+    <>
+      <section className="page-heading split">
+        <div>
+          <span className="eyebrow dark">PLATFORM ADMINISTRATION</span>
+          <h2>Create secure customer access.</h2>
+          <p>
+            Accounts are created server-side and connected to an isolated
+            organization workspace.
+          </p>
+        </div>
+        <button className="primary-button" onClick={onAdd}>
+          <UserPlus size={17} /> Create account
+        </button>
+      </section>
+      <section className="admin-callout">
+        <ShieldCheck />
+        <div>
+          <strong>Administrator actions stay traceable</strong>
+          <p>
+            Select a customer workspace to manage jobs and candidates on their
+            behalf.
+          </p>
+        </div>
+      </section>
+      <section className="organization-grid">
+        {organizations.map((item) => (
+          <article key={item.id}>
+            <span className="organization-icon">
+              <Building2 />
+            </span>
+            <div>
+              <strong>{item.name}</strong>
+              <p>{item.workspace_mode} workspace</p>
+            </div>
+            <span className="status-pill open">Active</span>
+          </article>
+        ))}
+      </section>
+    </>
+  );
+}
+
+function JobModal({
+  organization,
+  demoMode,
+  onClose,
+  onCreated,
+}: {
+  organization: Organization;
+  demoMode: boolean;
+  onClose: () => void;
+  onCreated: (job: Job) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiError, setAiError] = useState("");
+  const [description, setDescription] = useState("");
+  const [researchOpen, setResearchOpen] = useState(false);
+  const [researchBusy, setResearchBusy] = useState(false);
+  const [researchInput, setResearchInput] = useState("");
+  const [researchMessages, setResearchMessages] = useState<
+    { role: "user" | "assistant"; text: string }[]
+  >([]);
+  const [researchSources, setResearchSources] = useState<
+    { title: string; url: string }[]
+  >([]);
+  const formRef = useRef<HTMLFormElement>(null);
+  async function draftDescription() {
+    const form = formRef.current;
+    if (!form) return;
+    const values = new FormData(form);
+    const title = String(values.get("title")).trim();
+    if (!title) {
+      setAiError("Add a job title first so the draft can be specific.");
+      return;
+    }
+    const context = {
+      organizationId: organization.id,
+      title,
+      department: String(values.get("department")).trim(),
+      location: String(values.get("location")).trim(),
+      employmentType: String(values.get("employmentType")).trim(),
+      workspaceMode: organization.workspace_mode,
+      companyWebsite: String(values.get("companyWebsite") ?? "").trim(),
+      researchNotes: researchMessages.map(
+        (message) => `${message.role}: ${message.text}`,
+      ),
+    };
+    setAiBusy(true);
+    setAiError("");
+    try {
+      const draft = demoMode
+        ? `We are looking for a ${title} to join our ${context.department || "growing"} team${context.location ? ` in ${context.location}` : ""}. In this role, you will take ownership of meaningful work, collaborate closely with colleagues and help turn business needs into practical results.\n\nWhat you will do\n• Lead and deliver work within your area of expertise\n• Work across teams to solve problems and improve how we operate\n• Communicate progress, decisions and recommendations clearly\n\nWhat we are looking for\n• Relevant experience for the ${title} role\n• A thoughtful, collaborative approach and strong communication skills\n• The ability to work independently and follow through on commitments\n\n${context.employmentType ? `Employment type: ${context.employmentType}. ` : ""}We welcome different backgrounds and encourage you to apply if the role feels relevant to your experience.`
+        : await generateJobDescription(context);
+      setDescription(draft);
+    } catch (reason) {
+      setAiError(
+        reason instanceof Error
+          ? reason.message
+          : "The draft could not be generated.",
+      );
+    } finally {
+      setAiBusy(false);
+    }
+  }
+  async function sendResearchMessage() {
+    const form = formRef.current;
+    const message = researchInput.trim();
+    if (!form || !message) return;
+    const values = new FormData(form);
+    const title = String(values.get("title")).trim();
+    const companyWebsite = String(values.get("companyWebsite")).trim();
+    if (!title || !companyWebsite) {
+      setAiError(
+        "Add a job title and company website before starting research.",
+      );
+      return;
+    }
+    const userMessage = { role: "user" as const, text: message };
+    setResearchMessages((current) => [...current, userMessage]);
+    setResearchInput("");
+    setResearchBusy(true);
+    setAiError("");
+    try {
+      const result = demoMode
+        ? {
+            reply:
+              "This is the demo preview. In a connected workspace I would now review the company website and compare current, similar job ads. I have noted your priority and will use it in the editable draft.",
+            sources: [
+              {
+                title: "Company website supplied for research",
+                url: companyWebsite,
+              },
+            ],
+          }
+        : await researchJobWithAi({
+            organizationId: organization.id,
+            title,
+            department: String(values.get("department")),
+            location: String(values.get("location")),
+            employmentType: String(values.get("employmentType")),
+            workspaceMode: organization.workspace_mode,
+            companyWebsite,
+            researchNotes: researchMessages.map(
+              (item) => `${item.role}: ${item.text}`,
+            ),
+            message,
+          });
+      setResearchMessages((current) => [
+        ...current,
+        { role: "assistant", text: result.reply },
+      ]);
+      setResearchSources(result.sources);
+    } catch (reason) {
+      setAiError(
+        reason instanceof Error
+          ? reason.message
+          : "The research could not be completed.",
+      );
+    } finally {
+      setResearchBusy(false);
+    }
+  }
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    const form = new FormData(event.currentTarget);
+    const input = {
+      organization_id: organization.id,
+      title: String(form.get("title")),
+      department: String(form.get("department")),
+      location: String(form.get("location")),
+      description: String(form.get("description")),
+      employment_type: String(form.get("employmentType")),
+      job_type:
+        organization.workspace_mode === "consulting"
+          ? ("client_assignment" as const)
+          : ("internal_role" as const),
+      status: "open" as const,
+    };
+    try {
+      onCreated(
+        demoMode
+          ? {
+              ...input,
+              id: crypto.randomUUID(),
+              created_at: new Date().toISOString(),
+            }
+          : await createJob(input),
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <ModalShell
+      title={`Create ${organization.workspace_mode === "consulting" ? "assignment" : "job"}`}
+      subtitle="Define the opportunity candidates will be evaluated against."
+      onClose={onClose}
+    >
+      <form className="modal-form" ref={formRef} onSubmit={submit}>
+        <label>
+          Title
+          <input
+            name="title"
+            required
+            placeholder="e.g. Senior Data Engineer"
+          />
+        </label>
+        <div className="form-grid">
+          <label>
+            Department
+            <select name="department" defaultValue="" required>
+              <option value="" disabled>
+                Select department
+              </option>
+              {departmentOptions.map((department) => (
+                <option key={department} value={department}>
+                  {department}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Location
+            <select name="location" defaultValue="" required>
+              <option value="" disabled>
+                Select location
+              </option>
+              {locationOptions.map((location) => (
+                <option key={location} value={location}>
+                  {location}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <label>
+          Employment type
+          <select name="employmentType" defaultValue="" required>
+            <option value="" disabled>
+              Select employment type
+            </option>
+            {employmentTypeOptions.map((type) => (
+              <option key={type} value={type}>
+                {type}
+              </option>
+            ))}
+          </select>
+        </label>
+        <section className="research-option">
+          <div className="research-option-heading">
+            <div>
+              <span className="research-icon">
+                <Search size={17} />
+              </span>
+              <div>
+                <strong>Research with AI</strong>
+                <small>
+                  Discuss company context and role priorities before drafting.
+                </small>
+              </div>
+            </div>
+            <button
+              className="secondary-button"
+              type="button"
+              aria-expanded={researchOpen}
+              onClick={() => setResearchOpen((current) => !current)}
+            >
+              {researchOpen ? "Close research" : "Add research"}
+            </button>
+          </div>
+          {researchOpen && (
+            <div className="research-body">
+              <label>
+                Company website
+                <input
+                  name="companyWebsite"
+                  type="url"
+                  placeholder="https://yourcompany.com"
+                  required={researchOpen}
+                />
+                <small>
+                  AI will only use public information and will show its sources.
+                </small>
+              </label>
+              <div className="research-chat" aria-live="polite">
+                {!researchMessages.length && (
+                  <p className="research-intro">
+                    Tell AI what matters for this role. For example: “Focus on
+                    our culture and compare the skills requested by similar
+                    companies.”
+                  </p>
+                )}
+                {researchMessages.map((message, index) => (
+                  <div
+                    className={`research-message ${message.role}`}
+                    key={`${message.role}-${index}`}
+                  >
+                    <strong>
+                      {message.role === "assistant" ? "InsideGrid AI" : "You"}
+                    </strong>
+                    <p>{message.text}</p>
+                  </div>
+                ))}
+              </div>
+              {!!researchSources.length && (
+                <div className="research-sources">
+                  <strong>Sources reviewed</strong>
+                  {researchSources.map((source) => (
+                    <a
+                      href={source.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      key={source.url}
+                    >
+                      {source.title} <ExternalLink size={12} />
+                    </a>
+                  ))}
+                </div>
+              )}
+              <div className="research-composer">
+                <textarea
+                  value={researchInput}
+                  onChange={(event) => setResearchInput(event.target.value)}
+                  rows={2}
+                  aria-label="Message AI research assistant"
+                  placeholder="What should the research focus on?"
+                />
+                <button
+                  className="primary-button"
+                  type="button"
+                  onClick={sendResearchMessage}
+                  disabled={researchBusy || !researchInput.trim()}
+                >
+                  {researchBusy ? (
+                    <LoaderCircle className="spin" size={16} />
+                  ) : (
+                    <ArrowRight size={16} />
+                  )}
+                  Send
+                </button>
+              </div>
+              {demoMode && (
+                <small className="demo-disclosure">
+                  Demo preview — AI drafting starts in a connected Supabase
+                  workspace.
+                </small>
+              )}
+            </div>
+          )}
+        </section>
+        <div className="description-heading">
+          <div>
+            <strong>Description</strong>
+            <small>
+              Start with an AI draft, then edit it in your own words.
+            </small>
+          </div>
+          <button
+            className="ai-draft-button"
+            type="button"
+            onClick={draftDescription}
+            disabled={aiBusy}
+          >
+            {aiBusy ? (
+              <LoaderCircle className="spin" size={15} />
+            ) : (
+              <Sparkles size={15} />
+            )}
+            {aiBusy
+              ? "Writing draft…"
+              : description
+                ? "Rewrite draft"
+                : "Generate draft"}
+          </button>
+        </div>
+        {aiError && <div className="form-error ai-error">{aiError}</div>}
+        <label className="description-field">
+          <textarea
+            name="description"
+            aria-label="Description"
+            rows={10}
+            required
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            placeholder="Write the responsibilities, outcomes and requirements — or let AI prepare a first draft…"
+          />
+          <small>
+            You remain in control. Review and edit the text before publishing.
+          </small>
+        </label>
+        <FormActions
+          busy={busy}
+          onClose={onClose}
+          label="Create and open pipeline"
+        />
+      </form>
+    </ModalShell>
+  );
+}
+
+function CandidateModal({
+  organization,
+  jobs,
+  demoMode,
+  onClose,
+  onCreated,
+}: {
+  organization: Organization;
+  jobs: Job[];
+  demoMode: boolean;
+  onClose: () => void;
+  onCreated: (candidate: Candidate, application?: Application) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    const form = new FormData(event.currentTarget);
+    const input = {
+      organization_id: organization.id,
+      full_name: String(form.get("name")),
+      professional_title: String(form.get("title")),
+      email: String(form.get("email")),
+      phone: String(form.get("phone")),
+      location: String(form.get("location")),
+      linkedin_url: String(form.get("linkedin")),
+      summary: String(form.get("summary")),
+      skills: String(form.get("skills"))
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean),
+      candidate_type: String(
+        form.get("candidateType"),
+      ) as Candidate["candidate_type"],
+      available_from: String(form.get("availableFrom")) || null,
+    };
+    try {
+      const candidate = demoMode
+        ? {
+            ...input,
+            id: crypto.randomUUID(),
+            created_at: new Date().toISOString(),
+          }
+        : await createCandidate(input);
+      const jobId = String(form.get("job"));
+      let application: Application | undefined;
+      if (jobId)
+        application = demoMode
+          ? {
+              id: crypto.randomUUID(),
+              organization_id: organization.id,
+              job_id: jobId,
+              candidate_id: candidate.id,
+              stage: "new",
+              position: 0,
+              stage_changed_at: new Date().toISOString(),
+              created_at: new Date().toISOString(),
+            }
+          : await createApplication({
+              organization_id: organization.id,
+              job_id: jobId,
+              candidate_id: candidate.id,
+            });
+      onCreated(candidate, application);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <ModalShell
+      title="Add candidate"
+      subtitle="Create one reusable profile and optionally add it to a live pipeline."
+      onClose={onClose}
+    >
+      <form className="modal-form" onSubmit={submit}>
+        <div className="form-grid">
+          <label>
+            Full name
+            <input name="name" required />
+          </label>
+          <label>
+            Professional title
+            <input name="title" required />
+          </label>
+        </div>
+        <div className="form-grid">
+          <label>
+            Email
+            <input name="email" type="email" required />
+          </label>
+          <label>
+            Phone
+            <input name="phone" />
+          </label>
+        </div>
+        <div className="form-grid">
+          <label>
+            Location
+            <input name="location" />
+          </label>
+          <label>
+            LinkedIn URL
+            <input
+              name="linkedin"
+              type="url"
+              placeholder="https://linkedin.com/in/…"
+            />
+          </label>
+        </div>
+        <div className="form-grid">
+          <label>
+            Talent type
+            <select name="candidateType">
+              <option value="external">External candidate</option>
+              <option value="employee">Employee / consultant</option>
+              <option value="subcontractor">Subcontractor</option>
+            </select>
+          </label>
+          <label>
+            Available from
+            <input name="availableFrom" type="date" />
+          </label>
+        </div>
+        <label>
+          Skills
+          <input name="skills" required placeholder="SQL, Python, Azure" />
+          <small>Separate skills with commas.</small>
+        </label>
+        <label>
+          Profile summary
+          <textarea name="summary" rows={4} />
+        </label>
+        <label>
+          Add to pipeline
+          <select name="job">
+            <option value="">Talent pool only</option>
+            {jobs.map((job) => (
+              <option key={job.id} value={job.id}>
+                {job.title}
+              </option>
+            ))}
+          </select>
+        </label>
+        <FormActions busy={busy} onClose={onClose} label="Add candidate" />
+      </form>
+    </ModalShell>
+  );
+}
+
+function UserModal({
+  organizations,
+  demoMode,
+  onClose,
+  onCreated,
+}: {
+  organizations: Organization[];
+  demoMode: boolean;
+  onClose: () => void;
+  onCreated: (organization?: Organization) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [role, setRole] = useState<"customer" | "platform_admin">("customer");
+  const [choice, setChoice] = useState(organizations[0]?.id ?? "new");
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    const form = new FormData(event.currentTarget);
+    try {
+      if (demoMode) {
+        onCreated(
+          choice === "new" && role === "customer"
+            ? {
+                id: crypto.randomUUID(),
+                name: String(form.get("organizationName")),
+                workspace_mode: String(
+                  form.get("workspaceMode"),
+                ) as WorkspaceMode,
+              }
+            : undefined,
+        );
+        return;
+      }
+      const result = await createUser({
+        email: String(form.get("email")),
+        password: String(form.get("password")),
+        fullName: String(form.get("fullName")),
+        role,
+        organizationId:
+          role === "customer" && choice !== "new" ? choice : undefined,
+        organizationName:
+          role === "customer" && choice === "new"
+            ? String(form.get("organizationName"))
+            : undefined,
+        workspaceMode: String(form.get("workspaceMode")) as WorkspaceMode,
+      });
+      onCreated(result.organization);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <ModalShell
+      title="Create account"
+      subtitle="Provision an administrator or a customer workspace account."
+      onClose={onClose}
+    >
+      <form className="modal-form" onSubmit={submit}>
+        <div className="form-grid">
+          <label>
+            Full name
+            <input name="fullName" required />
+          </label>
+          <label>
+            Role
+            <select
+              value={role}
+              onChange={(event) => setRole(event.target.value as typeof role)}
+            >
+              <option value="customer">Customer</option>
+              <option value="platform_admin">Platform administrator</option>
+            </select>
+          </label>
+        </div>
+        <div className="form-grid">
+          <label>
+            Email
+            <input name="email" type="email" required />
+          </label>
+          <label>
+            Temporary password
+            <input name="password" type="password" minLength={10} required />
+          </label>
+        </div>
+        {role === "customer" && (
+          <>
+            <label>
+              Organization
+              <select
+                value={choice}
+                onChange={(event) => setChoice(event.target.value)}
+              >
+                <option value="new">Create new organization</option>
+                {organizations.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {choice === "new" && (
+              <div className="form-grid">
+                <label>
+                  Organization name
+                  <input name="organizationName" required />
+                </label>
+                <label>
+                  Workspace type
+                  <select name="workspaceMode">
+                    <option value="recruitment">Recruit employees</option>
+                    <option value="consulting">Place consultants</option>
+                    <option value="hybrid">Hybrid</option>
+                  </select>
+                </label>
+              </div>
+            )}
+          </>
+        )}
+        <FormActions
+          busy={busy}
+          onClose={onClose}
+          label="Create secure account"
+        />
+      </form>
+    </ModalShell>
+  );
+}
+function FormActions({
+  busy,
+  onClose,
+  label,
+}: {
+  busy: boolean;
+  onClose: () => void;
+  label: string;
+}) {
+  return (
+    <div className="form-actions">
+      <button className="secondary-button" type="button" onClick={onClose}>
+        Cancel
+      </button>
+      <button className="primary-button" type="submit" disabled={busy}>
+        {busy ? (
+          <LoaderCircle className="spin" size={17} />
+        ) : (
+          <Check size={17} />
+        )}{" "}
+        {label}
+      </button>
+    </div>
+  );
+}
+
+function CandidateDrawer({
+  candidate,
+  job,
+  application,
+  evaluation,
+  organization,
+  onClose,
+  onMove,
+  onEvaluate,
+}: {
+  candidate: Candidate;
+  job: Job;
+  application: Application;
+  evaluation?: AiEvaluation;
+  organization: Organization;
+  onClose: () => void;
+  onMove: (application: Application, stage: ApplicationStage) => void;
+  onEvaluate: (application: Application) => Promise<void>;
+}) {
+  const [evaluating, setEvaluating] = useState(false);
+  async function evaluate() {
+    setEvaluating(true);
+    try {
+      await onEvaluate(application);
+    } finally {
+      setEvaluating(false);
+    }
+  }
+  return (
+    <div className="drawer-backdrop" onMouseDown={onClose}>
+      <aside
+        className="drawer"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header>
+          <div className="candidate-card-head">
+            <span className="avatar large">
+              {initials(candidate.full_name)}
+            </span>
+            <div>
+              <h2>{candidate.full_name}</h2>
+              <p>{candidate.professional_title}</p>
+            </div>
+          </div>
+          <button className="icon-button" onClick={onClose}>
+            <X />
+          </button>
+        </header>
+        <section className="drawer-stage">
+          <span>Stage for {job.title}</span>
+          <select
+            value={application.stage}
+            onChange={(event) =>
+              onMove(application, event.target.value as ApplicationStage)
+            }
+          >
+            {stages.map((stage) => (
+              <option key={stage.id} value={stage.id}>
+                {stage.id === "hired" &&
+                organization.workspace_mode === "consulting"
+                  ? "Placed"
+                  : stage.label}
+              </option>
+            ))}
+            <option value="rejected">Rejected</option>
+          </select>
+        </section>
+        <section>
+          <h3>Profile</h3>
+          <p>{candidate.summary || "No profile summary has been added yet."}</p>
+          <div className="detail-grid">
+            <span>
+              <small>Email</small>
+              <a href={`mailto:${candidate.email}`}>{candidate.email}</a>
+            </span>
+            <span>
+              <small>Location</small>
+              {candidate.location || "Not provided"}
+            </span>
+            {candidate.linkedin_url && (
+              <span>
+                <small>Professional profile</small>
+                <a
+                  href={candidate.linkedin_url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  LinkedIn <ExternalLink size={13} />
+                </a>
+              </span>
+            )}
+            <span>
+              <small>Talent type</small>
+              {candidate.candidate_type}
+            </span>
+          </div>
+          <div className="skill-row roomy">
+            {candidate.skills.map((skill) => (
+              <span key={skill}>{skill}</span>
+            ))}
+          </div>
+        </section>
+        <section className="ai-panel">
+          <div className="ai-heading">
+            <span className="spark-icon small">
+              <Sparkles />
+            </span>
+            <div>
+              <span className="eyebrow dark">AI INSIGHTS</span>
+              <h3>Evidence for human review</h3>
+            </div>
+          </div>
+          {evaluation ? (
+            <div className="evaluation">
+              <p>{evaluation.summary}</p>
+              <InsightList
+                title="Supported strengths"
+                items={evaluation.strengths}
+                tone="positive"
+              />
+              <InsightList
+                title="Gaps or unknowns"
+                items={evaluation.gaps}
+                tone="warning"
+              />
+              <InsightList
+                title="Follow-up questions"
+                items={evaluation.follow_up_questions}
+                tone="neutral"
+              />
+              <small>
+                Decision support only. A person must review and decide.
+              </small>
+            </div>
+          ) : (
+            <>
+              <p>
+                Compare the verified profile with this job and surface evidence,
+                unknowns, and useful interview questions.
+              </p>
+              <button
+                className="primary-button"
+                onClick={evaluate}
+                disabled={evaluating}
+              >
+                {evaluating ? (
+                  <LoaderCircle className="spin" size={17} />
+                ) : (
+                  <Sparkles size={17} />
+                )}{" "}
+                Generate AI insights
+              </button>
+            </>
+          )}
+        </section>
+      </aside>
+    </div>
+  );
+}
+function InsightList({
+  title,
+  items,
+  tone,
+}: {
+  title: string;
+  items: string[];
+  tone: string;
+}) {
+  return (
+    <div className={`insight-list ${tone}`}>
+      <strong>{title}</strong>
+      {items.map((item) => (
+        <p key={item}>
+          <span />
+          {item}
+        </p>
+      ))}
+    </div>
+  );
+}
+function EmptyState({ title, text }: { title: string; text: string }) {
+  return (
+    <div className="empty-state">
+      <CircleUserRound />
+      <strong>{title}</strong>
+      <p>{text}</p>
+    </div>
+  );
+}
+createRoot(document.getElementById("root")!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+);
