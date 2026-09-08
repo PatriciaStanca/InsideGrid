@@ -8,6 +8,7 @@ import {
   Check,
   ChevronDown,
   CircleUserRound,
+  Clock3,
   ExternalLink,
   Filter,
   Grid2X2,
@@ -16,12 +17,14 @@ import {
   LoaderCircle,
   LogOut,
   Menu,
+  Play,
   Plus,
   Search,
   ShieldCheck,
   Sparkles,
   UserPlus,
   Users,
+  UserRoundSearch,
   X,
 } from "lucide-react";
 import "./styles.css";
@@ -113,6 +116,107 @@ const daysInStage = (value: string) =>
     0,
     Math.floor((Date.now() - new Date(value).getTime()) / 86_400_000),
   );
+
+type PublicPage = "home" | "pricing" | "login";
+
+function PublicSite({
+  page,
+  onNavigate,
+  onDemo,
+  onAuthenticated,
+}: {
+  page: PublicPage;
+  onNavigate: (page: PublicPage) => void;
+  onDemo: () => void;
+  onAuthenticated: (userId: string) => Promise<void>;
+}) {
+  if (page === "login") {
+    return (
+      <>
+        <button className="back-to-site" onClick={() => onNavigate("home")}>← Back to InsideGrid</button>
+        <Login onDemo={onDemo} onAuthenticated={onAuthenticated} />
+      </>
+    );
+  }
+  return (
+    <main className="marketing-site">
+      <header className="marketing-nav">
+        <button className="brand bare" onClick={() => onNavigate("home")}>
+          <span className="brand-mark"><Grid2X2 size={18} /></span><span>InsideGrid</span>
+        </button>
+        <nav aria-label="Main navigation">
+          <button onClick={() => onNavigate("home")}>Product</button>
+          <button onClick={() => onNavigate("pricing")}>Pricing</button>
+          <button onClick={() => document.getElementById("how-it-works")?.scrollIntoView({ behavior: "smooth" })}>How it works</button>
+        </nav>
+        <div className="marketing-actions">
+          <button className="nav-login" onClick={() => onNavigate("login")}>Log in</button>
+          <button className="primary-button" onClick={() => onNavigate("login")}>Get started <ArrowRight size={16} /></button>
+        </div>
+      </header>
+
+      {page === "pricing" ? (
+        <PricingPage onStart={() => onNavigate("login")} />
+      ) : (
+        <>
+          <section className="marketing-hero">
+            <div className="hero-copy">
+              <p className="marketing-kicker">One place for working life</p>
+              <h1>Find the right work.<br />Find the right people.</h1>
+              <p className="hero-lead">InsideGrid brings candidates, hiring teams and consulting companies into one calm, practical workspace.</p>
+              <div className="hero-cta">
+                <button className="primary-button large-button" onClick={() => onNavigate("login")}>Choose your workspace <ArrowRight size={17} /></button>
+                <button className="quiet-button" onClick={onDemo}><Play size={15} fill="currentColor" /> View product demo</button>
+              </div>
+              <p className="trust-line"><Check size={15} /> Start free &nbsp; <Check size={15} /> No credit card &nbsp; <Check size={15} /> Built for GDPR-aware teams</p>
+            </div>
+            <div className="hero-media">
+              <video autoPlay muted loop playsInline poster="/login.avif">
+                <source src="/login-video.mp4" type="video/mp4" />
+              </video>
+              <div className="media-caption"><span>InsideGrid in practice</span><strong>People and opportunities, clearly connected.</strong></div>
+            </div>
+          </section>
+
+          <section className="audience-section" id="how-it-works">
+            <div className="section-intro"><p className="marketing-kicker">Start where you are</p><h2>What brings you to InsideGrid?</h2><p>Choose a workspace built around the work you actually need to do. You can add another mode later.</p></div>
+            <div className="audience-grid">
+              <AudienceCard number="01" icon={<UserRoundSearch />} title="I’m looking for work" text="Keep your profile, CV and applications in one place. Discover roles and consulting assignments that match your experience." bullets={["One reusable professional profile", "Application overview", "Relevant opportunities"]} action="Create candidate profile" onClick={() => onNavigate("login")} />
+              <AudienceCard featured number="02" icon={<UserPlus />} title="I’m hiring" text="Run a focused recruitment process without spreadsheets. Create jobs, collect candidates and keep every next step visible." bullets={["First recruitment free", "Compact candidate pipeline", "Structured, human-led review"]} action="Start your first recruitment" onClick={() => onNavigate("login")} />
+              <AudienceCard number="03" icon={<BriefcaseBusiness />} title="I place consultants" text="Build a searchable CV database, see availability and match your employed consultants to client assignments." bullets={["Two consultant profiles free", "CV and competence database", "Assignment pipeline"]} action="Set up consulting workspace" onClick={() => onNavigate("login")} />
+            </div>
+          </section>
+
+          <section className="product-story">
+            <div className="product-window" aria-label="InsideGrid pipeline preview">
+              <div className="window-bar"><i></i><i></i><i></i><span>Candidate pipeline · Product Designer</span></div>
+              <div className="mini-board">
+                {["New", "Review", "Interview", "Offer"].map((stage, index) => <div className="mini-column" key={stage}><strong>{stage}<em>{index + 1}</em></strong>{[0,1,2-index].filter(n=>n>=0).map((_, n)=><span className="mini-person" key={n}><i></i><b>{["Maya Lindberg","Lina Berg","Sam Nilsson"][(index+n)%3]}</b><small>{index === 2 ? "Interview Thu" : "Updated today"}</small></span>)}</div>)}
+              </div>
+            </div>
+            <div className="story-copy"><p className="marketing-kicker">Less admin, more context</p><h2>A shared view of every next step.</h2><p>InsideGrid connects the job or assignment to each person, conversation and decision. Your team always knows what happened and what comes next.</p><ul><li><Check /> Filter the pipeline by role or candidate</li><li><Check /> Keep profiles useful across opportunities</li><li><Check /> Use AI as writing and review support—not the decision-maker</li></ul><button className="text-link" onClick={onDemo}>Explore the interactive demo <ArrowRight size={16} /></button></div>
+          </section>
+
+          <section className="pricing-teaser"><div><p className="marketing-kicker">Simple from day one</p><h2>Try the real workflow before you pay.</h2><p>Your first recruitment is free. Candidates can start free, and consulting teams can manage their first two consultant profiles at no cost.</p></div><button className="light-button" onClick={() => onNavigate("pricing")}>Compare plans <ArrowRight size={16} /></button></section>
+        </>
+      )}
+      <footer className="marketing-footer"><div className="brand"><span className="brand-mark"><Grid2X2 size={18}/></span>InsideGrid</div><p>One clear view of people, work and what comes next.</p><div><button onClick={() => onNavigate("pricing")}>Pricing</button><button onClick={() => onNavigate("login")}>Log in</button></div><small>© 2026 InsideGrid · Product demo</small></footer>
+    </main>
+  );
+}
+
+function AudienceCard({ number, icon, title, text, bullets, action, featured, onClick }: { number:string; icon:React.ReactNode; title:string; text:string; bullets:string[]; action:string; featured?:boolean; onClick:()=>void }) {
+  return <article className={`audience-card ${featured ? "featured" : ""}`}><div className="card-index"><span>{icon}</span><small>{number}</small></div><h3>{title}</h3><p>{text}</p><ul>{bullets.map(item=><li key={item}><Check size={15}/>{item}</li>)}</ul><button onClick={onClick}>{action}<ArrowRight size={16}/></button></article>;
+}
+
+function PricingPage({ onStart }: { onStart: () => void }) {
+  const plans = [
+    { audience:"For candidates", name:"Profile", price:"Free", note:"to get started", description:"For people exploring jobs or consulting assignments.", items:["Professional profile and CV", "Track up to 5 applications", "Opportunity recommendations", "Export your profile"], action:"Create free profile" },
+    { audience:"For hiring teams", name:"First hire", price:"Free", note:"for one active recruitment", description:"A complete first pipeline for a small team making a thoughtful hire.", items:["1 active job and recruitment", "Unlimited candidates for that role", "Kanban pipeline and filters", "AI-assisted job draft"], action:"Start first recruitment", featured:true },
+    { audience:"For consulting firms", name:"Consulting", price:"Free", note:"for up to 2 consultants", description:"For small consulting teams building their shared competence base.", items:["2 consultant profiles", "CV and competence database", "Assignment pipeline", "Availability overview"], action:"Add your consultants" },
+  ];
+  return <section className="pricing-page"><div className="pricing-heading"><p className="marketing-kicker">Plans that grow with the work</p><h1>Start free. Upgrade when InsideGrid earns its place.</h1><p>No complicated packages at the beginning. Choose the workspace that fits you today.</p></div><div className="pricing-grid">{plans.map(plan=><article className={`price-card ${plan.featured ? "featured" : ""}`} key={plan.name}>{plan.featured && <span className="popular-label">Best place to start</span>}<small>{plan.audience}</small><h2>{plan.name}</h2><div className="price"><strong>{plan.price}</strong><span>{plan.note}</span></div><p>{plan.description}</p><ul>{plan.items.map(item=><li key={item}><Check size={16}/>{item}</li>)}</ul><button className={plan.featured ? "primary-button" : "secondary-button"} onClick={onStart}>{plan.action}<ArrowRight size={16}/></button></article>)}</div><div className="paid-note"><Clock3/><div><strong>What happens after the free level?</strong><p>Paid plans for additional recruitments, applications or consultant profiles will be introduced after the pilot. Early users will see the price before choosing to upgrade—nothing changes automatically.</p></div></div></section>;
+}
 
 function Login({
   onDemo,
@@ -288,6 +392,7 @@ function ModalShell({
 }
 
 function App() {
+  const [publicPage, setPublicPage] = useState<PublicPage>("home");
   const [workspace, setWorkspace] = useState<WorkspaceData | null>(null);
   const [selectedOrganizationId, setSelectedOrganizationId] = useState("");
   const [view, setView] = useState<View>("dashboard");
@@ -355,7 +460,14 @@ function App() {
       </div>
     );
   if (!workspace)
-    return <Login onDemo={enterDemo} onAuthenticated={authenticate} />;
+    return (
+      <PublicSite
+        page={publicPage}
+        onNavigate={setPublicPage}
+        onDemo={enterDemo}
+        onAuthenticated={authenticate}
+      />
+    );
   const currentWorkspace = workspace;
   const isAdmin = currentWorkspace.profile.platform_role === "platform_admin";
   const organization =

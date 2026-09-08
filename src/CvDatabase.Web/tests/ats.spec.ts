@@ -9,10 +9,8 @@ test("covers the required ATS demo flow", async ({ page }, testInfo) => {
     testInfo.project.name === "mobile",
     "The full workflow is covered on desktop; mobile has a focused layout test.",
   );
-  await expect(
-    page.getByRole("heading", { name: "Welcome back" }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Explore interactive demo" }).click();
+  await expect(page.getByRole("heading", { name: /Find the right work/ })).toBeVisible();
+  await page.getByRole("button", { name: "View product demo" }).click();
   await expect(
     page.getByRole("heading", { name: /Good morning/ }),
   ).toBeVisible();
@@ -87,11 +85,12 @@ test("covers the required ATS demo flow", async ({ page }, testInfo) => {
 
 test("does not overflow the mobile viewport", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "mobile", "Mobile-specific check");
-  await page.getByRole("button", { name: "Explore interactive demo" }).click();
   const overflow = await page.evaluate(
     () =>
       document.documentElement.scrollWidth >
       document.documentElement.clientWidth,
   );
   expect(overflow).toBe(false);
+  await page.getByRole("button", { name: "View product demo" }).click();
+  await expect(page.getByRole("heading", { name: /Good morning/ })).toBeVisible();
 });
