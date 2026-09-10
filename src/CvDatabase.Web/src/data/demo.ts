@@ -1,7 +1,8 @@
 import type { WorkspaceData } from "../types";
 
 const now = new Date();
-const daysAgo = (days: number) => new Date(now.getTime() - days * 86_400_000).toISOString();
+const daysAgo = (days: number) =>
+  new Date(now.getTime() - days * 86_400_000).toISOString();
 
 export const demoWorkspace: WorkspaceData = {
   profile: {
@@ -11,10 +12,47 @@ export const demoWorkspace: WorkspaceData = {
     platform_role: "platform_admin",
   },
   organizations: [
-    { id: "northstar", name: "Northstar Talent", workspace_mode: "recruitment" },
+    {
+      id: "northstar",
+      name: "Northstar Talent",
+      workspace_mode: "recruitment",
+    },
     { id: "signal", name: "Signal Consulting", workspace_mode: "consulting" },
   ],
   memberships: [],
+  documents: [],
+  activities: [
+    {
+      id: "activity-1",
+      organization_id: "northstar",
+      actor_id: "demo-admin",
+      entity_type: "application",
+      entity_id: "app-4",
+      action: "application.stage_changed",
+      metadata: { from: "interview", to: "offer", demo: true },
+      created_at: daysAgo(1),
+    },
+    {
+      id: "activity-2",
+      organization_id: "northstar",
+      actor_id: "demo-admin",
+      entity_type: "application",
+      entity_id: "app-1",
+      action: "application.stage_changed",
+      metadata: { from: "review", to: "interview", demo: true },
+      created_at: daysAgo(2),
+    },
+    {
+      id: "activity-3",
+      organization_id: "northstar",
+      actor_id: "demo-admin",
+      entity_type: "application",
+      entity_id: "app-2",
+      action: "application.stage_changed",
+      metadata: { from: "new", to: "review", demo: true },
+      created_at: daysAgo(3),
+    },
+  ],
   jobs: [
     {
       id: "job-product",
@@ -22,11 +60,28 @@ export const demoWorkspace: WorkspaceData = {
       title: "Senior Product Designer",
       department: "Product",
       location: "Stockholm · Hybrid",
-      description: "Lead product discovery and design accessible workflows for a growing B2B platform.",
+      description:
+        "Lead product discovery and design accessible workflows for a growing B2B platform.",
       employment_type: "Full-time",
       job_type: "internal_role",
       status: "open",
       created_at: daysAgo(18),
+      responsibilities: [
+        "Lead discovery from problem framing to validated solution",
+        "Turn research into accessible product flows",
+        "Evolve the design system with product and engineering",
+      ],
+      required_skills: [
+        "Product discovery",
+        "Figma",
+        "Accessibility",
+        "Design systems",
+      ],
+      preferred_skills: ["B2B SaaS", "Facilitation", "Analytics"],
+      hiring_manager: "Anna Sjöberg",
+      closing_date: new Date(now.getTime() + 16 * 86_400_000)
+        .toISOString()
+        .slice(0, 10),
     },
     {
       id: "job-data",
@@ -34,11 +89,20 @@ export const demoWorkspace: WorkspaceData = {
       title: "Data Engineer",
       department: "Data & AI",
       location: "Remote · Sweden",
-      description: "Build reliable data products with Python, SQL, dbt, and modern cloud platforms.",
+      description:
+        "Build reliable data products with Python, SQL, dbt, and modern cloud platforms.",
       employment_type: "Full-time",
       job_type: "internal_role",
       status: "open",
       created_at: daysAgo(11),
+      responsibilities: [
+        "Build and operate reliable data pipelines",
+        "Model trusted analytics datasets",
+        "Partner with analysts and product teams",
+      ],
+      required_skills: ["Python", "SQL", "dbt", "Cloud platforms"],
+      preferred_skills: ["Azure", "Snowflake", "Orchestration"],
+      hiring_manager: "Johan Ek",
     },
     {
       id: "job-dotnet",
@@ -46,7 +110,8 @@ export const demoWorkspace: WorkspaceData = {
       title: ".NET Integration Consultant",
       department: "Consulting",
       location: "Gothenburg · Hybrid",
-      description: "Client assignment focused on secure APIs, integrations, and Azure.",
+      description:
+        "Client assignment focused on secure APIs, integrations, and Azure.",
       employment_type: "6-month assignment",
       job_type: "client_assignment",
       status: "open",
@@ -63,11 +128,50 @@ export const demoWorkspace: WorkspaceData = {
       phone: "+46 70 111 22 33",
       location: "Stockholm",
       linkedin_url: "https://www.linkedin.com/in/maya-lindberg",
-      summary: "Product designer with strong discovery, design-system, and accessibility experience.",
+      summary:
+        "Product designer with strong discovery, design-system, and accessibility experience.",
       skills: ["Product discovery", "Figma", "Design systems", "Accessibility"],
       candidate_type: "external",
       available_from: null,
       created_at: daysAgo(9),
+      experience: [
+        {
+          role: "Senior Product Designer",
+          company: "Northline",
+          period: "2022–present",
+          summary:
+            "Led discovery and interaction design for B2B workflows used across five markets.",
+        },
+        {
+          role: "Product Designer",
+          company: "Studio Common",
+          period: "2019–2022",
+          summary:
+            "Built accessible services and contributed to a shared design system.",
+        },
+      ],
+      education: [
+        {
+          qualification: "MSc Interaction Design",
+          school: "Chalmers University of Technology",
+          period: "2017–2019",
+        },
+      ],
+      recruiter: "Patricia Stanca",
+      next_step: "Portfolio interview · Thursday 10:00",
+      notes: [
+        "Strong discovery examples in screening call.",
+        "Confirm ownership of design-system governance.",
+      ],
+      cv_file_name: "maya-lindberg-demo-profile.pdf",
+      cv_uploaded_at: daysAgo(9),
+      cv_source: "demo_profile",
+      skill_evidence: {
+        "Product discovery": { section: "Experience — Northline", page: 1 },
+        Figma: { section: "Skills", page: 2 },
+        "Design systems": { section: "Experience — Studio Common", page: 1 },
+        Accessibility: { section: "Skills", page: 2 },
+      },
     },
     {
       id: "candidate-omar",
@@ -78,11 +182,14 @@ export const demoWorkspace: WorkspaceData = {
       phone: "+46 70 222 33 44",
       location: "Malmö",
       linkedin_url: "https://www.linkedin.com/in/omar-haddad",
-      summary: "Analytics engineer experienced in dimensional modelling and dependable transformation workflows.",
+      summary:
+        "Analytics engineer experienced in dimensional modelling and dependable transformation workflows.",
       skills: ["SQL", "dbt", "Python", "Snowflake"],
       candidate_type: "external",
       available_from: null,
       created_at: daysAgo(6),
+      recruiter: "Patricia Stanca",
+      next_step: "Review orchestration experience · tomorrow",
     },
     {
       id: "candidate-lina",
@@ -93,11 +200,14 @@ export const demoWorkspace: WorkspaceData = {
       phone: "+46 70 333 44 55",
       location: "Gothenburg",
       linkedin_url: "https://www.linkedin.com/in/lina-berg",
-      summary: "Cloud data engineer working across ingestion, modelling, and production operations.",
+      summary:
+        "Cloud data engineer working across ingestion, modelling, and production operations.",
       skills: ["Python", "Azure", "SQL", "ETL"],
       candidate_type: "external",
       available_from: null,
       created_at: daysAgo(4),
+      recruiter: "Patricia Stanca",
+      next_step: "Initial review · today",
     },
     {
       id: "candidate-elias",
@@ -108,11 +218,15 @@ export const demoWorkspace: WorkspaceData = {
       phone: "+46 70 444 55 66",
       location: "Uppsala",
       linkedin_url: "https://www.linkedin.com/in/elias-novak",
-      summary: "User-centered designer with research and prototyping experience.",
+      summary:
+        "User-centered designer with research and prototyping experience.",
       skills: ["UX research", "Prototyping", "Figma"],
+      explicitly_not_met: ["Accessibility"],
       candidate_type: "external",
       available_from: null,
       created_at: daysAgo(3),
+      recruiter: "Patricia Stanca",
+      next_step: "Offer approval · Friday",
     },
     {
       id: "candidate-sara",
@@ -123,28 +237,82 @@ export const demoWorkspace: WorkspaceData = {
       phone: "+46 70 555 66 77",
       location: "Gothenburg",
       linkedin_url: "https://www.linkedin.com/in/sara-svensson",
-      summary: "Backend consultant specialized in secure APIs, integrations, and Azure delivery.",
+      summary:
+        "Backend consultant specialized in secure APIs, integrations, and Azure delivery.",
       skills: ["C#", ".NET", "Azure", "API design"],
       candidate_type: "employee",
-      available_from: new Date(now.getTime() + 30 * 86_400_000).toISOString().slice(0, 10),
+      available_from: new Date(now.getTime() + 30 * 86_400_000)
+        .toISOString()
+        .slice(0, 10),
       created_at: daysAgo(15),
     },
   ],
   applications: [
-    { id: "app-1", organization_id: "northstar", job_id: "job-product", candidate_id: "candidate-maya", stage: "interview", position: 0, stage_changed_at: daysAgo(2), created_at: daysAgo(8) },
-    { id: "app-2", organization_id: "northstar", job_id: "job-data", candidate_id: "candidate-omar", stage: "review", position: 0, stage_changed_at: daysAgo(3), created_at: daysAgo(6) },
-    { id: "app-3", organization_id: "northstar", job_id: "job-data", candidate_id: "candidate-lina", stage: "new", position: 0, stage_changed_at: daysAgo(1), created_at: daysAgo(4) },
-    { id: "app-4", organization_id: "northstar", job_id: "job-product", candidate_id: "candidate-elias", stage: "offer", position: 0, stage_changed_at: daysAgo(1), created_at: daysAgo(3) },
-    { id: "app-5", organization_id: "signal", job_id: "job-dotnet", candidate_id: "candidate-sara", stage: "review", position: 0, stage_changed_at: daysAgo(2), created_at: daysAgo(6) },
+    {
+      id: "app-1",
+      organization_id: "northstar",
+      job_id: "job-product",
+      candidate_id: "candidate-maya",
+      stage: "interview",
+      position: 0,
+      stage_changed_at: daysAgo(2),
+      created_at: daysAgo(8),
+    },
+    {
+      id: "app-2",
+      organization_id: "northstar",
+      job_id: "job-data",
+      candidate_id: "candidate-omar",
+      stage: "review",
+      position: 0,
+      stage_changed_at: daysAgo(3),
+      created_at: daysAgo(6),
+    },
+    {
+      id: "app-3",
+      organization_id: "northstar",
+      job_id: "job-data",
+      candidate_id: "candidate-lina",
+      stage: "new",
+      position: 0,
+      stage_changed_at: daysAgo(1),
+      created_at: daysAgo(4),
+    },
+    {
+      id: "app-4",
+      organization_id: "northstar",
+      job_id: "job-product",
+      candidate_id: "candidate-elias",
+      stage: "offer",
+      position: 0,
+      stage_changed_at: daysAgo(1),
+      created_at: daysAgo(3),
+    },
+    {
+      id: "app-5",
+      organization_id: "signal",
+      job_id: "job-dotnet",
+      candidate_id: "candidate-sara",
+      stage: "review",
+      position: 0,
+      stage_changed_at: daysAgo(2),
+      created_at: daysAgo(6),
+    },
   ],
   evaluations: [
     {
       id: "evaluation-1",
       application_id: "app-2",
-      summary: "Strong evidence for the core analytics engineering requirements. Confirm production orchestration experience during interview.",
-      strengths: ["SQL and dbt are directly supported by the profile", "Snowflake experience matches the target stack"],
+      summary:
+        "Strong evidence for the core analytics engineering requirements. Confirm production orchestration experience during interview.",
+      strengths: [
+        "SQL and dbt are directly supported by the profile",
+        "Snowflake experience matches the target stack",
+      ],
       gaps: ["Production orchestration tooling is not stated"],
-      follow_up_questions: ["Which orchestration tools have you operated in production?"],
+      follow_up_questions: [
+        "Which orchestration tools have you operated in production?",
+      ],
       created_at: daysAgo(1),
     },
   ],

@@ -1,0 +1,56 @@
+/* Dashboard-owned layout. Explicit row structure prevents legacy generic
+   panel and span grids from changing the shape of interactive content. */
+.dashboard-page { min-width: 0; }
+.dashboard-page .metric-grid { margin-bottom: 24px; border: 0; border-radius: 0; overflow: visible; }
+.dashboard-page .metric-card { min-height: 100px; }
+.dashboard-page .metric-card strong { font-size: 32px; line-height: 1.2; }
+.dashboard-page .metric-card small { font-size: 13px; }
+.dashboard-page .metric-card p { font-size: 12px; line-height: 1.5; }
+.dashboard-page .pipeline-pulse { padding: 18px 20px; background: #f5f7f6; border: 0; margin-bottom: 28px; }
+.dashboard-page .pipeline-pulse header span { text-transform: none; letter-spacing: 0; font-size: 14px; }
+.dashboard-page .pipeline-pulse > div { gap: 12px; }
+.dashboard-page .pipeline-pulse > div button { min-height: 78px; border: 0; border-radius: 6px; box-shadow: 0 1px 2px #182d2110; }
+.dashboard-page .pipeline-pulse > div button strong { font-size: 24px; }
+.dashboard-page .dashboard-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(300px, 1fr); gap: 28px; align-items: start; }
+.dashboard-page .dashboard-grid .panel { min-width: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.dashboard-page .panel > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0; padding: 0 0 16px; min-height: 44px; }
+.dashboard-page .panel h3 { margin: 0; font-family: inherit; font-size: 18px; line-height: 1.4; letter-spacing: -.025em; }
+.dashboard-page .activity-list { display: flex; flex-direction: column; min-width: 0; }
+.dashboard-page .activity-row { appearance: none; width: 100%; min-width: 0; margin: 0; padding: 16px 8px; display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; gap: 6px 12px; border: 0; border-top: 1px solid var(--ig-line); background: transparent; color: var(--ig-ink); font: inherit; text-align: left; cursor: pointer; transition: background .15s ease; }
+.dashboard-page .activity-row .avatar { grid-row: 1 / 3; width: 36px; height: 36px; font-size: 11px; }
+.dashboard-page .activity-row > div { min-width: 0; }
+.dashboard-page .activity-row strong { font-size: 14px; font-weight: 650; line-height: 1.5; }
+.dashboard-page .activity-row p { margin: 2px 0 0; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.dashboard-page .activity-row .stage-badge { max-width: 100%; font-size: 11px; font-weight: 600; line-height: 1.5; white-space: normal; align-self: start; }
+.dashboard-page .activity-row > small { grid-column: 2 / -1; display: block; text-align: left; font-size: 11px; line-height: 1.5; }
+.dashboard-page .activity-row:hover, .dashboard-page .action-list button:hover { background: #f3f7f5; }
+.dashboard-page .focus-heading .action-count { display: grid; place-items: center; width: 28px; height: 28px; flex: 0 0 28px; border-radius: 50%; background: #edf3ef; color: var(--ig-green-800); font-size: 13px; }
+.dashboard-page .action-list { border: 0; margin: 0 0 14px; }
+.dashboard-page .action-list button { appearance: none; display: flex; width: 100%; min-width: 0; align-items: center; justify-content: space-between; gap: 16px; margin: 0; padding: 16px 12px; border: 0; border-top: 1px solid var(--ig-line); background: transparent; color: var(--ig-ink); font: inherit; text-align: left; cursor: pointer; transition: background .15s ease; }
+.dashboard-page .action-list button > .action-copy { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
+.dashboard-page .action-list b { font-family: inherit; font-size: 14px; font-weight: 650; line-height: 1.5; }
+.dashboard-page .action-list em { font-style: normal; font-size: 12px; line-height: 1.5; color: var(--ig-muted); overflow-wrap: anywhere; }
+.dashboard-page .action-list small { display: block; font-size: 11px; line-height: 1.5; }
+.dashboard-page .action-list .action-urgent { margin-top: 4px; color: #936018; }
+.dashboard-page .action-list .action-upcoming { margin-top: 4px; color: #52659c; }
+.dashboard-page .action-list svg { flex: 0 0 17px; color: var(--ig-green-800); }
+.dashboard-page .focus-panel > .secondary-button { width: auto; min-height: 36px; font-size: 12px; padding: 8px 12px; }
+.dashboard-page .actions-empty { margin: 0; padding: 20px 0; font-size: 13px; line-height: 1.6; color: var(--ig-muted); }
+.dashboard-page button:focus-visible { outline: 2px solid var(--ig-green-700); outline-offset: 3px; }
+@media (max-width: 1200px) {
+  .dashboard-page .dashboard-grid { grid-template-columns: minmax(0, 1fr); }
+  .dashboard-page .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 16px; }
+  .dashboard-page .metric-card:nth-child(2) { border-right: 0 !important; }
+}
+@media (max-width: 600px) {
+  .dashboard-page .metric-card { padding: 12px !important; gap: 8px; }
+  .dashboard-page .metric-icon { display: none; }
+  .dashboard-page .pipeline-pulse { padding: 14px; }
+  .dashboard-page .pipeline-pulse > div { grid-template-columns: repeat(5, 110px); overflow-x: auto; padding-bottom: 8px; }
+  .dashboard-page .activity-row { grid-template-columns: 32px minmax(0, 1fr); }
+  .dashboard-page .activity-row .stage-badge { grid-column: 2; }
+  .dashboard-page .panel > header { gap: 8px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-page .activity-row, .dashboard-page .action-list button { transition: none; }
+}

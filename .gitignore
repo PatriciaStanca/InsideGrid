@@ -24,3 +24,13 @@ supabase/.temp/
 
 # Local Netlify folder
 .netlify
+
+# Deployment state and review artifacts
+.netlify/
+*.log
+docs/audits/
+Inspo/
+/*.png
+/*.pdf
+/ide.txt
+/krav*.txt

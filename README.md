@@ -1,144 +1,76 @@
-# InsideGrid ATS
+# InsideGrid
 
-InsideGrid is a focused, multi-tenant applicant tracking system for hiring teams and consulting firms. It connects organizations, jobs or assignments, candidates, and job-specific applications in one compact workflow.
+Mini-ATS for recruitment and consulting teams. Built with React, TypeScript and Supabase, extending an earlier CV and competence platform. The current runtime uses Supabase; the earlier .NET prototype is preserved in Git history rather than the delivery tree.
 
-## Assignment coverage
+Live: https://patriciastanca.com/insidegrid
 
-- Platform administrators can create administrator and customer accounts.
-- Customers can sign in with Supabase Auth.
-- Customers can create jobs or client assignments.
-- Customers can create reusable candidate profiles, including LinkedIn URLs.
-- Candidates are connected to jobs through normalized application records.
-- A compact Kanban board shows candidates by stage.
-- The board can be filtered by job and candidate name.
-- Platform administrators can select a customer organization and manage its records.
-- AI Insights compares verified profile information with job requirements without making automated hiring decisions.
-- Every business record is isolated by organization using PostgreSQL Row Level Security.
+## Run
 
-## Product modes
+Requires Node.js 22+.
 
-The same data model supports three organization-level workspace modes:
-
-- `recruitment`: recruit external candidates for internal roles.
-- `consulting`: match employees, subcontractors, or external candidates with client assignments.
-- `hybrid`: support both workflows.
-
-Workspace mode changes labels and defaults; it is not an authentication role. The MVP authorization roles are `platform_admin` and `customer`.
-
-## Architecture
-
-```text
-React 19 + Vite
-        |
-        | Supabase publishable key + user JWT
-        v
-Supabase Auth ---- PostgreSQL + RLS
-        |                   |
-        |                   +-- organizations / memberships
-        |                   +-- jobs / candidates / applications
-        |                   +-- activities / AI evaluations
-        v
-Edge Functions
-  create-user          server-only privileged account creation
-  evaluate-candidate   authenticated, tenant-scoped AI insights
-```
-
-The browser never receives a Supabase secret or service-role key. The `create-user` function verifies that the caller is a platform administrator before using privileged APIs.
-
-## Run locally
-
-```bash
+```sh
 cd src/CvDatabase.Web
-npm install
+npm ci
 cp .env.example .env.local
 npm run dev
 ```
 
-Until valid Supabase configuration is added, the login screen offers an interactive in-memory demo. Demo mode is for product review only; live delivery must use Supabase.
+Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` for your Supabase project. Never put a service-role key or model API key in browser variables. The isolated interactive demo is available without an account; real authentication and persistence require Supabase.
 
-Required browser environment variables:
+## Features
 
-```env
-VITE_SUPABASE_URL=https://uunaexgeunlvizbzgqrb.supabase.co
-VITE_SUPABASE_PUBLISHABLE_KEY=your_publishable_key
-```
+- Platform admin creates admin/customer accounts and works in customer workspaces.
+- Customer login, jobs, reusable candidate profiles, LinkedIn links and private PDF CVs.
+- Job-specific applications in a compact kanban, filtered by job and candidate name.
+- Published/draft jobs, searchable public job cards and an application dialog.
+- Applications are linked to the organization owning the published job.
+- Dashboard, notes, activity and per-requirement evidence.
+- Consulting workspace with assignments, availability and editable CV drafts.
+- AI-assisted company research and job drafting using Gemini and supplied reference advertisements.
 
-The publishable key is expected in browser code and is not a secret. Authorization still depends on tested RLS policies. Never add a secret or service-role key to a `VITE_` variable.
+## Matching and AI
 
-## Configure the Supabase project
+The green percentage is **documented requirement coverage**: fully supported required criteria divided by all required criteria. Partial or missing evidence receives no credit. No criteria means no percentage. It is not a prediction of job performance or an automated hiring decision. Preferred criteria are presented separately.
 
-The target project reference is `uunaexgeunlvizbzgqrb`.
+`evaluate-candidate` reviews supplied profile/CV information and job requirements. Recruitment uses OpenAI when configured; consulting uses Gemini. A rules-only fallback is labelled as such when no provider key is available. Generated results require human review.
 
-1. Install the Supabase CLI and authenticate locally.
-2. Link this directory to the existing project.
-3. Review the project region before storing candidate data.
-4. Apply the versioned migration.
-5. Deploy both Edge Functions.
-6. Add `OPENAI_API_KEY` as an Edge Function secret if live model-backed insights are required.
+`generate-job-description` uses Gemini for company research and editable advertisement drafts. `consulting-assistant` supports requirement extraction and CV drafting. Model credentials remain in Supabase secrets.
 
-```bash
+## Supabase setup
+
+```sh
 supabase login
-supabase link --project-ref uunaexgeunlvizbzgqrb
+supabase link --project-ref YOUR_PROJECT_REF
 supabase db push
 supabase functions deploy create-user
 supabase functions deploy evaluate-candidate
-supabase secrets set OPENAI_API_KEY=your_key
+supabase functions deploy generate-job-description
+supabase functions deploy consulting-assistant
+supabase functions deploy submit-application
 ```
 
-Supabase automatically provides its URL and platform keys to deployed functions. The source code uses the server-side function environment and never commits those values.
+Configure `GEMINI_API_KEY`, `GEMINI_MODEL`, and optionally `OPENAI_API_KEY` / `OPENAI_MODEL` in Supabase secrets. Create the first verified administrator in Supabase Auth, then set that profile's `platform_role` to `platform_admin`. Subsequent accounts can be created in the app. Do not commit account passwords.
 
-## Bootstrap the first platform administrator
+Migrations contain organization-scoped RLS, account permissions, CV storage, evidence records and public publication/application functions. Public endpoints expose published jobs; CV files and candidate contact details remain private.
 
-The first administrator must exist before the in-app administrator flow can be used:
+## Tests
 
-1. Create the user in Supabase Dashboard under Authentication > Users.
-2. The migration trigger creates the corresponding `profiles` record.
-3. Promote only that verified user in SQL Editor:
-
-```sql
-update public.profiles
-set platform_role = 'platform_admin'
-where email = 'verified-admin@example.com';
-```
-
-Use a dedicated demo administrator account for delivery, not a personal password. Rotate or remove it after the review period.
-
-## AI Insights
-
-The `evaluate-candidate` function:
-
-- loads the application, candidate, and job through the caller's RLS-scoped client;
-- uses only supplied profile and job facts;
-- returns supported strengths, gaps or unknowns, and follow-up questions;
-- stores the input snapshot, model identifier, actor, and result;
-- never moves, rejects, or hires a candidate.
-
-If `OPENAI_API_KEY` is absent, the function returns a transparent rule-based fallback instead of pretending that a model was called.
-
-## Verification
-
-```bash
+```sh
 cd src/CvDatabase.Web
+npm test
 npm run build
+npx playwright install chromium
 npm run test:e2e
-npm audit
 ```
 
-The browser suite covers the interactive ATS workflow on desktop and checks mobile viewport overflow. RLS must also be tested against the linked Supabase project with at least two customer organizations before production use.
+The browser smoke suite uses fictional demo data. Optional live login checks use `E2E_ADMIN_EMAIL`, `E2E_ADMIN_PASSWORD`, `E2E_CUSTOMER_EMAIL`, `E2E_CUSTOMER_PASSWORD`; never hardcode these. Unit tests cover evidence, coverage, filtering, provider/authentication boundaries and application validation. These tests are not a complete independent security audit.
 
-## Important files
+## Deployment
 
-```text
-src/CvDatabase.Web/src/main.tsx                 ATS interface and workflows
-src/CvDatabase.Web/src/lib/api.ts               Supabase data access
-src/CvDatabase.Web/src/lib/supabase.ts          safe browser client
-src/CvDatabase.Web/src/data/demo.ts             isolated interactive demo data
-supabase/migrations/202609070001_initial_ats.sql schema, RLS, audit trail, storage
-supabase/functions/create-user/index.ts          privileged account creation
-supabase/functions/evaluate-candidate/index.ts   AI decision support
-docs/ats-product-research.md                     research and product decisions
-```
+`netlify.toml` builds and serves `src/CvDatabase.Web/dist`. Configure the two public Vite variables in the deployment environment. Supabase migrations and functions are deployed separately. The GitHub workflow verifies tests/build; it does not deploy the retired Azure backend.
 
-## Delivery status
+## Assumptions
 
-The application and Supabase implementation are complete locally. A successful local build or interactive demo does not prove that the remote project is configured. Live status requires verified migration output, deployed-function output, real admin/customer login, tenant-isolation checks, and a hosted URL.
+Each customer has a separate workspace. Administrators provision accounts. Candidate profiles can be reused for multiple jobs, with a separate stage per application. The sample job and application flow are clearly marked as demonstration data. AI supports review and writing; people decide what to publish and whom to recruit.
+
+Asset credits and licenses: [docs/asset-licences.md](docs/asset-licences.md).

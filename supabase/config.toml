@@ -8,3 +8,6 @@ verify_jwt = true
 
 [functions.generate-job-description]
 verify_jwt = true
+
+[functions.submit-application]
+verify_jwt = false

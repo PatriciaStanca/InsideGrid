@@ -2,9 +2,11 @@ import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
 import type {
   AiEvaluation,
+  Activity,
   Application,
   ApplicationStage,
   Candidate,
+  CandidateDocument,
   Job,
   Organization,
   OrganizationMembership,
@@ -82,9 +84,13 @@ export async function loadWorkspace(userId: string): Promise<WorkspaceData> {
     candidatesResult,
     applicationsResult,
     evaluationsResult,
+    documentsResult,
+    activitiesResult,
   ] = await Promise.all([
     organizationQuery,
-    client.from("organization_members").select("organization_id, user_id, role, permissions"),
+    client
+      .from("organization_members")
+      .select("organization_id, user_id, role, permissions"),
     client.from("jobs").select("*").order("created_at", { ascending: false }),
     client
       .from("candidates")
@@ -99,6 +105,16 @@ export async function loadWorkspace(userId: string): Promise<WorkspaceData> {
       .from("ai_evaluations")
       .select("*")
       .order("created_at", { ascending: false }),
+    client
+      .from("candidate_documents")
+      .select("*")
+      .is("superseded_at", null)
+      .order("uploaded_at", { ascending: false }),
+    client
+      .from("activities")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(100),
   ]);
 
   const firstError = [
@@ -108,18 +124,138 @@ export async function loadWorkspace(userId: string): Promise<WorkspaceData> {
     candidatesResult,
     applicationsResult,
     evaluationsResult,
+    documentsResult,
+    activitiesResult,
   ].find((result) => result.error)?.error;
   if (firstError) throw firstError;
+
+  const hydratedCandidates = await Promise.all(
+    ((candidatesResult.data ?? []) as Candidate[]).map(async (candidate) => {
+      const document = (
+        (documentsResult.data ?? []) as CandidateDocument[]
+      ).find((item) => item.candidate_id === candidate.id);
+      let photoUrl: string | undefined;
+      if (candidate.photo_path) {
+        const { data } = await client.storage
+          .from("candidate-photos")
+          .createSignedUrl(candidate.photo_path, 3600);
+        photoUrl = data?.signedUrl;
+      }
+      return {
+        ...candidate,
+        ...(document
+          ? {
+              cv_file_name: document.file_name,
+              cv_uploaded_at: document.uploaded_at,
+              cv_source: "uploaded" as const,
+              cv_storage_path: document.storage_path,
+              cv_pages: document.extracted_pages,
+            }
+          : {}),
+        ...(photoUrl ? { photo_url: photoUrl } : {}),
+      };
+    }),
+  );
 
   return {
     profile: profile as Profile,
     organizations: (organizationResult.data ?? []) as Organization[],
     memberships: (membershipResult.data ?? []) as OrganizationMembership[],
     jobs: (jobsResult.data ?? []) as Job[],
-    candidates: (candidatesResult.data ?? []) as Candidate[],
+    candidates: hydratedCandidates,
     applications: (applicationsResult.data ?? []) as Application[],
     evaluations: (evaluationsResult.data ?? []) as AiEvaluation[],
+    documents: (documentsResult.data ?? []) as CandidateDocument[],
+    activities: (activitiesResult.data ?? []) as Activity[],
   };
+}
+
+export async function uploadCandidateCv(
+  candidate: Candidate,
+  file: File,
+  extractedPages: Array<{ page: number; text: string }>,
+): Promise<CandidateDocument> {
+  if (file.type !== "application/pdf")
+    throw new Error("CV must be a PDF file.");
+  if (file.size > 10 * 1024 * 1024)
+    throw new Error("CV must be 10 MB or smaller.");
+  const client = requireClient();
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-");
+  const storagePath = `${candidate.organization_id}/${candidate.id}/${crypto.randomUUID()}-${safeName}`;
+  const { error: uploadError } = await client.storage
+    .from("candidate-resumes")
+    .upload(storagePath, file, {
+      contentType: "application/pdf",
+      upsert: false,
+    });
+  if (uploadError) throw uploadError;
+  const { data, error } = await client
+    .from("candidate_documents")
+    .insert({
+      organization_id: candidate.organization_id,
+      candidate_id: candidate.id,
+      storage_path: storagePath,
+      file_name: file.name,
+      mime_type: file.type,
+      size_bytes: file.size,
+      extracted_pages: extractedPages,
+      extraction_status: "complete",
+      extraction_error: null,
+    })
+    .select()
+    .single();
+  if (error) {
+    await client.storage.from("candidate-resumes").remove([storagePath]);
+    throw error;
+  }
+  return data as CandidateDocument;
+}
+
+export async function getCandidateCvUrl(
+  storagePath: string,
+  downloadFileName?: string,
+): Promise<string> {
+  const client = requireClient();
+  const { data, error } = await client.storage
+    .from("candidate-resumes")
+    .createSignedUrl(
+      storagePath,
+      60,
+      downloadFileName ? { download: downloadFileName } : undefined,
+    );
+  if (error) throw error;
+  return data.signedUrl;
+}
+
+export async function uploadCandidatePhoto(
+  candidate: Candidate,
+  file: File,
+): Promise<{ path: string; url: string }> {
+  const allowed = ["image/jpeg", "image/png", "image/webp"];
+  if (!allowed.includes(file.type))
+    throw new Error("Photo must be JPG, PNG, or WebP.");
+  if (file.size > 5 * 1024 * 1024)
+    throw new Error("Photo must be 5 MB or smaller.");
+  const client = requireClient();
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-");
+  const path = `${candidate.organization_id}/${candidate.id}/${crypto.randomUUID()}-${safeName}`;
+  const { error: uploadError } = await client.storage
+    .from("candidate-photos")
+    .upload(path, file, { contentType: file.type, upsert: false });
+  if (uploadError) throw uploadError;
+  const { error: updateError } = await client
+    .from("candidates")
+    .update({ photo_path: path, photo_file_name: file.name })
+    .eq("id", candidate.id);
+  if (updateError) {
+    await client.storage.from("candidate-photos").remove([path]);
+    throw updateError;
+  }
+  const { data, error } = await client.storage
+    .from("candidate-photos")
+    .createSignedUrl(path, 3600);
+  if (error) throw error;
+  return { path, url: data.signedUrl };
 }
 
 export async function createJob(
@@ -142,6 +278,21 @@ export async function createCandidate(
   const { data, error } = await client
     .from("candidates")
     .insert(input)
+    .select()
+    .single();
+  if (error) throw error;
+  return data as Candidate;
+}
+
+export async function updateCandidateNotes(
+  id: string,
+  notes: string[],
+): Promise<Candidate> {
+  const client = requireClient();
+  const { data, error } = await client
+    .from("candidates")
+    .update({ notes })
+    .eq("id", id)
     .select()
     .single();
   if (error) throw error;
@@ -223,6 +374,31 @@ export async function requestAiEvaluation(
   return data.evaluation as AiEvaluation;
 }
 
+export async function reviewAiEvaluation(
+  id: string,
+  comment: string,
+): Promise<AiEvaluation> {
+  const client = requireClient();
+  const { data: authData, error: authError } = await client.auth.getUser();
+  if (authError || !authData.user) {
+    throw (
+      authError ?? new Error("You must be signed in to review an evaluation.")
+    );
+  }
+  const { data, error } = await client
+    .from("ai_evaluations")
+    .update({
+      reviewed_comment: comment,
+      reviewed_at: new Date().toISOString(),
+      reviewed_by: authData.user.id,
+    })
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data as AiEvaluation;
+}
+
 export async function generateJobDescription(input: {
   organizationId: string;
   title: string;
@@ -231,8 +407,12 @@ export async function generateJobDescription(input: {
   employmentType: string;
   workspaceMode: WorkspaceMode;
   companyWebsite?: string;
+  companyName?: string;
+  companyValues?: string;
+  exampleAdvertisement?: string;
+  currentDraft?: string;
   researchNotes?: string[];
-}): Promise<string> {
+}): Promise<{ description: string; sources: { title: string; url: string }[] }> {
   const client = requireClient();
   const { data, error } = await client.functions.invoke(
     "generate-job-description",
@@ -240,12 +420,15 @@ export async function generateJobDescription(input: {
       body: { ...input, action: "draft" },
     },
   );
+  const serverError = error?.context instanceof Response ? await error.context.clone().json().catch(() => null) : null;
   if (error || !data?.description) {
     throw new Error(
-      data?.error ?? error?.message ?? "The job description could not be generated.",
+      serverError?.error ?? data?.error ??
+        error?.message ??
+        "The job description could not be generated.",
     );
   }
-  return String(data.description);
+  return { description: String(data.description), sources: Array.isArray(data.sources) ? data.sources : [] };
 }
 
 export async function researchJobWithAi(input: {
@@ -256,6 +439,9 @@ export async function researchJobWithAi(input: {
   employmentType: string;
   workspaceMode: WorkspaceMode;
   companyWebsite: string;
+  companyName?: string;
+  companyValues?: string;
+  exampleAdvertisement?: string;
   researchNotes: string[];
   message: string;
 }): Promise<{ reply: string; sources: { title: string; url: string }[] }> {
@@ -266,13 +452,23 @@ export async function researchJobWithAi(input: {
       body: { ...input, action: "chat" },
     },
   );
+  const serverError = error?.context instanceof Response ? await error.context.clone().json().catch(() => null) : null;
   if (error || !data?.reply) {
     throw new Error(
-      data?.error ?? error?.message ?? "The AI research could not be completed.",
+      serverError?.error ?? data?.error ??
+        error?.message ??
+        "The AI research could not be completed.",
     );
   }
   return {
     reply: String(data.reply),
     sources: Array.isArray(data.sources) ? data.sources : [],
   };
+}
+
+export async function setJobPublication(jobId: string, publish: boolean): Promise<Job> {
+  const { data, error } = await requireClient().rpc("set_job_publication", { job_id: jobId, publish });
+  if (error) throw error;
+  if (!data?.[0]) throw new Error("The publication status could not be saved.");
+  return data[0] as Job;
 }

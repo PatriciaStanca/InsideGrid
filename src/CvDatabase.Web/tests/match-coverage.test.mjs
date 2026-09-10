@@ -1,0 +1,10 @@
+import {readFileSync} from 'node:fs';
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import ts from 'typescript';
+const source=readFileSync(new URL('../src/lib/matchCoverage.ts',import.meta.url),'utf8');
+const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext}}).outputText;
+const {requirementCoverage}=await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`);
+test('no criteria is unavailable, not a zero or perfect match',()=>assert.equal(requirementCoverage([]).percent,null));
+test('partial, missing and unmet evidence do not inflate coverage',()=>assert.deepEqual(requirementCoverage(['supported','partial','not_evidenced','not_met'].map(status=>({status}))),{total:4,supported:1,percent:25}));
+test('four documented requirements out of five gives 80 percent',()=>assert.equal(requirementCoverage([...Array(4).fill({status:'supported'}),{status:'not_evidenced'}]).percent,80));

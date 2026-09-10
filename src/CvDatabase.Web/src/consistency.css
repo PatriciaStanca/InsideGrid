@@ -1,0 +1,77 @@
+/* Shared type roles. Keep marketing hierarchy distinct from the compact workspace. */
+:root {
+  --ig-font: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --ig-type-caption: 12px;
+  --ig-type-label: 14px;
+  --ig-type-body: 16px;
+  --ig-type-section: 18px;
+  --ig-type-card: 22px;
+  --ig-type-dialog: 24px;
+  --ig-type-page: 28px;
+  --ig-type-public-title: clamp(36px, 4.5vw, 56px);
+}
+body, button, input, select, textarea, h1, h2, h3, h4, .brand {
+  font-family: var(--ig-font) !important;
+}
+.marketing-site, .signin-page { font-size: var(--ig-type-body); line-height: 1.6; }
+.marketing-site :is(.pricing-heading h1, .job-intro h1, .public-job-catalog h1) { font-size: var(--ig-type-public-title); line-height: 1.12; font-weight: 700; letter-spacing: -.045em; }
+.marketing-site :is(.section-intro h2, .story-copy h2, .pricing-teaser h2) { font-size: clamp(28px,3vw,40px); line-height: 1.2; letter-spacing: -.035em; }
+.marketing-site :is(.audience-card h3,.price-card h2,.public-job-card-copy h2,.job-description h2,.public-apply-card h2) { font-size: var(--ig-type-card); line-height: 1.35; letter-spacing: -.025em; }
+.marketing-site :is(.marketing-kicker,.public-job-company,.video-credit,.job-photo-credit) { font-size: var(--ig-type-caption); }
+.marketing-site :is(.primary-button,.secondary-button,.text-link,.nav-login), .signin-page button { font-size: var(--ig-type-label); line-height: 1.4; }
+.marketing-site .hero-lead { font-size: 18px; line-height: 1.65; }
+.signin-form h1 { font-size: 36px; line-height: 1.2; }
+.signin-page :is(.signin-eyebrow,.signin-visual-copy > span,.signin-photo-credit,.signin-security,.signin-access-note,.signin-demo > span) { font-size: var(--ig-type-caption); }
+.app-shell { font-size: 14px; line-height: 1.5; }
+.app-shell :is(.page-heading h1,.page-heading h2,.directory-heading h1,.consulting-header h1) { font-size: var(--ig-type-page); line-height: 1.25; font-weight: 700; letter-spacing: -.035em; }
+.app-shell :is(.panel h3,.drawer h3,.modal h3,.consulting-tools h2) { font-size: var(--ig-type-section); line-height: 1.4; }
+.app-shell :is(.drawer > header h2,.modal > header h2) { font-size: var(--ig-type-dialog); line-height: 1.3; }
+.app-shell :is(.primary-button,.secondary-button,.text-link,.product-nav-link) { font-size: var(--ig-type-label); line-height: 1.4; }
+.app-shell :is(label,.consulting-tools label) { font-size: var(--ig-type-label); }
+.app-shell :is(small,.skill-row span,.candidate-card-head .match-chip,.consulting-help,.consulting-mode,.product-demo-label) { font-size: var(--ig-type-caption); line-height: 1.5; }
+.app-shell :is(input,select,textarea), .consulting-tools :is(input,select,textarea) { font-size: var(--ig-type-label); line-height: 1.5; }
+.app-shell :is(.page-heading,.directory-heading) { margin-bottom: 24px; }
+.app-shell :is(.drawer,.modal) p { color: var(--ig-text); line-height: 1.65; }
+.app-shell .drawer-backdrop, .app-shell .modal-backdrop { z-index: 100; }
+.candidate-app .profile-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.candidate-app .profile-actions > :is(button,a) { flex-shrink: 0; white-space: nowrap; }
+.cv-file-meta { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1 1 220px; overflow-wrap: anywhere; }
+.profile-timeline { display: grid; gap: 24px; }
+.profile-timeline article { display: grid; grid-template-columns: 110px minmax(0,1fr); gap: 16px; }
+.profile-timeline article > span { color: var(--ig-muted); font-size: 12px; }
+.profile-timeline article strong, .profile-timeline article small { display: block; }
+.profile-timeline article small { margin-top: 4px; color: var(--ig-muted); }
+.profile-timeline article p { margin: 10px 0 0; }
+.admin-account-list article > span:nth-child(2) { display: grid; gap: 4px; }
+.drawer-section-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; }
+.public-application-dialog :is(h2), .application-confirmation h2 { font-size: var(--ig-type-dialog); line-height: 1.3; }
+.public-application-dialog .application-form label { font-size: var(--ig-type-label); }
+@media(max-width:700px) {
+  .app-shell :is(input,select,textarea), .consulting-tools :is(input,select,textarea) { font-size: 16px; }
+  .candidate-app .drawer { width: 100vw; max-width: 100vw; min-width: 0; }
+  .candidate-app .drawer > header, .candidate-app .drawer > section { padding: 20px; }
+  .profile-timeline article { grid-template-columns: 1fr; gap: 6px; }
+  .candidate-app .profile-actions .cv-file-meta { flex-basis: 100%; }
+  .app-shell :is(.page-heading h1,.page-heading h2,.directory-heading h1) { font-size: 26px; }
+}
+/* Account identity and workspace metrics use the same readable rhythm. */
+.admin-account-list { margin: 28px 0; }
+.admin-account-list article { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; padding: 16px 0; }
+.admin-account-list article > span:nth-child(2) { flex: 1; min-width: 180px; }
+.access-overview > div { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 20px; }
+.access-overview small { position: static; }
+.marketing-site :is(.price-context,.price-tag,.price-plan-label,.audience-number,.hero-badge,.marketing-footer small) { font-size: 12px; }
+@media(max-width:700px) {
+ .consulting-shortlist > button { display: grid; grid-template-columns: 36px minmax(0,1fr) 16px; }
+ .consulting-fit { grid-column: 2; margin-left: 0; }
+ .consulting-shortlist > button > svg { grid-column: 3; grid-row: 1; }
+}
+.match-coverage { margin: 16px 0; padding: 18px; background: #eff7f3; border-radius: 8px; }
+.match-coverage-heading { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.candidate-app .match-coverage .candidate-app .match-coverage .match-coverage-heading strong { font-size: 30px; line-height: 1.2; color: #08765e; }
+.match-coverage-heading span { font-size: 14px; font-weight: 600; }
+.match-coverage meter { display: block; width: 100%; height: 16px; margin: 10px 0; accent-color: #08765e; }
+.match-coverage meter::-webkit-meter-bar { background: #dce8e2; border: 0; }
+.match-coverage meter::-webkit-meter-optimum-value { background: #08765e; }
+.match-coverage p { margin: 8px 0; font-size: 14px; }
+.match-coverage small { color: #52645d; }
